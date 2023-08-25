@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ROTS</title>
+    <script src="./js/math.min.js"></script>
+    <script src="./js/astro_vz.js"></script>
+    <script src="./js/LZWEncoder.js"></script>
+    <script src="./js/NeuQuant.js"></script>
+    <script src="./js/GIFEncoder.js"></script>
+    <script src="./js/pso_vz.js"></script>
+    <script src="./js/arts.js" defer></script>
+    <script src="./js/coastline.js"></script>
+    <link rel="stylesheet" href="./css/arts.css">
+    <link rel="icon" href="./Media/sallellite_icon.ico">
+</head>
+
+<body ondrop="artsDropHandler(event)" ondragover="artsDropHandler(event)" class="noselect">
+    <div id="canvas-div" style="touch-action: none;">
+        <canvas id="main-plot"></canvas>
+    </div>
+    <div id="time-slider">
+        <input id="time-slider-range" type="range" min=0 max=86164 step=0.1 value=0 oninput="sliderFunction(this)">
+    </div>
+    <div class="full-page-menu hidden panel" id="add-satellite-panel">
+        <div class="title-text" style="width: 100%; text-align: center; height: auto; font-weight: 900;">Add Satellite</div>
+        <div>
+            <div class="title-text">Initial State</div>
+            <div style="display: flex; justify-content: space-evenly; align-items: center;">
+                <div>
+                    <div>
+                        <label for="ric-sat-input">RIC</label><input onchange="changeSatelliteInputType(this)" type="radio" id="ric-sat-input" name="sat-input-radio" checked>
+                        <label for="eci-sat-input">ECI</label><input onchange="changeSatelliteInputType(this)" type="radio" id="eci-sat-input" name="sat-input-radio">
+                        <label for="coe-sat-input">COE</label><input onchange="changeSatelliteInputType(this)" type="radio" id="coe-sat-input" name="sat-input-radio">
+                        <label for="rmoe-sat-input">RMOE</label><input onchange="changeSatelliteInputType(this)" type="radio" id="rmoe-sat-input" name="sat-input-radio">
+                        <label for="geo-sat-input">GEO</label><input onchange="changeSatelliteInputType(this)" type="radio" id="geo-sat-input" name="sat-input-radio">
+                    </div>
+                    <div class="satellite-input" style="margin: 20px 5px; font-size: 1.25em;"></div>
+                    <div class="satellite-input" style="margin: 20px 5px; font-size: 1.25em;">R <input class="sat-input"  style="font-size: 1em; width: 15ch;" type="Number" placeholder="0"> km</div>
+                    <div class="satellite-input" style="margin: 20px 5px; font-size: 1.25em;">I <input class="sat-input"  style="font-size: 1em; width: 15ch;" type="Number" placeholder="0"> km</div>
+                    <div class="satellite-input" style="margin: 20px 5px; font-size: 1.25em;">C <input class="sat-input"  style="font-size: 1em; width: 15ch;" type="Number" placeholder="0"> km</div>
+                    <div class="satellite-input" style="margin: 20px 5px; font-size: 1.25em;">dR <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="0"> m/s</div>
+                    <div class="satellite-input" style="margin: 20px 5px; font-size: 1.25em;">dI <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="0"> m/s</div>
+                    <div class="satellite-input" style="margin: 20px 5px; font-size: 1.25em;">dC <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="0"> m/s</div>
+                </div>  
+            </div>
+            <div onclick=initStateFunction(this) style="font-size: 1.5em; padding: 14px 4px;" class="panel-button hoverable noselect">To Curvilinear</div>
+            <div style="margin: 20px 5px"><input autocomplete="off" title="ECI State (Time X Y Z dX dY dZ) or TLE" placeholder="ECI String or TLE" style="width: 100%;" value="" type="text" id="parse-text"></div>
+            <div onclick="parseState(this)" id="parse-to-ric" style="font-size: 1.5em; padding: 14px 4px;" class="panel-button hoverable noselect">Import State</div>
+        
+        </div>
+        <div>
+            <div class="title-text">Satellite Details</div>
+            <div style="margin: 20px 5px">
+                <select class="sat-style-input" name="" id="">
+                    <option value="delta">Delta</option>
+                    <option value="3-star">3-Point Star</option>
+                    <option value="4-star">4-Point Star</option>
+                    <option value="star">5-Point Star</option>
+                    <option value="diamond">Diamond</option>
+                    <option value="triangle">Triangle</option>
+                    <option value="square">Square</option>
+                    <option value="pentagon">Pentagon</option>
+                    <option value="hexagon">Hexagon</option>
+                    <option value="septagon">Septagon</option>
+                    <option value="octagon">Octagon</option>
+                </select>
+            </div>
+            <div style="margin: 20px 5px">Acceleration <input list="sat-acc-picker" class="sat-style-input" style="width: 10ch;" placeholder="1000" type="Number"> mm/s<sup>2</sup></div>
+            <datalist id="sat-acc-picker">
+                <option value="1000">Impulsive</option>
+                <option value="100"></option>
+                <option value="20"></option>
+                <option value="10"></option>
+                <option value="1"></option>
+            </datalist>
+            <div style="margin: 20px 5px">Color</sub> <input  list="sat-input-color-picker2" class="sat-style-input" style="width: 7em;" value="#ff0000" type="color"></div>
+            <datalist id="sat-input-color-picker">
+                <option value="#c86464"></option>
+                <option value="#64c864"></option>
+                <option value="#6464c8"></option>
+                <option value="#c864c8"></option>
+                <option value="#969696"></option>
+                <option value="#000000"></option>
+            </datalist>
+            <div style="margin: 20px 5px">Name <input class="sat-style-input" style="width: 6em;" value="" type="text"></div>
+            <button onclick="initStateFunction(this)" id="add-satellite-button" style="font-size: 1.5em; padding: 14px 4px; display: block;" class="panel-button hoverable noselect">Add Satellite</button>
+            <div><span onclick="editSatellite(this)" style="font-size: 1.5em; padding: 2px 4px; width: 50%;" class="panel-button hoverable noselect">Update</span><select onchange="openPanel(this)" style="font-size: 2em; width: 50%;" name="" id="edit-select">
+                
+            </select></div>
+            <div onclick="closeAll()" style="font-size: 1.5em; padding: 14px 4px;" class="panel-button hoverable noselect">Cancel</div>
+        
+        </div>
+    </div>
+    <div class="full-page-menu panel hidden" id="options-panel">
+        <div class="title-text" style="width: 100%; text-align: center; height: auto; font-weight: 900;">Options</div>
+        <div>
+            <div class="title-text">Origin ECI State</div>
+            <div style="margin: 20px 5px"><input oninput="changeOriginInput(this)" type="text" style="width: 100%" placeholder="J2000 String from STK" id="string-origin-input"></div>
+            <div style="margin: 20px 5px">Epoch 
+                <input style="width: 60%;" type="datetime-local" id="start-time" name="meeting-time" value="2019-06-01T00:00">
+            </div>
+            <div style="margin: 20px 5px">
+                <label for="eci-radio">ECI</label>
+                <input onchange="changeOriginInput(this)" type="radio" id="eci-radio" name="input-type">
+                <label for="coe-radio">COE</label>
+                <input onchange="changeOriginInput(this)" type="radio" id="coe-radio" name="input-type" checked>
+                <!-- <label for="geo-radio">GEO Belt</label>
+                <input onchange="changeOriginInput(this)" type="radio" id="geo-radio" name="input-type"> -->
+            </div>
+            
+            <div style="margin: 20px 5px"><em>a</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> km</div>
+            <div style="margin: 20px 5px"><em>e</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> </div>
+            <div style="margin: 20px 5px"><em>i</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
+            <div style="margin: 20px 5px"><em>#937</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
+            <div style="margin: 20px 5px"><em>#969</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
+            <div style="margin: 20px 5px"><em>#957</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
+            
+            <div style="margin: 20px 5px">Scenario Length <input id="scen-length-input" type="Number" min="0" max="360" step="1"> hrs</div>
+            <div>
+                <input class="cats-radio" type="radio" id="cats-good-0" name="fav_language" value="0" checked>
+                <label for="cats-good-0">0<sup>o</sup> Good Illumination Angle</label><br>
+                <input class="cats-radio" type="radio" id="cats-good-180" name="fav_language" value="180">
+                <label for="cats-good-180">180<sup>o</sup> Good Illumination Angle</label><br>
+            </div>
+            <div style="margin: 20px 5px">String Limits <input id="str-start-input" type="Number" min="0" max="360" step="1"> to <input id="str-end-input" type="Number" min="0" max="360" step="1"></div>
+            <div>
+                <button style="font-size: 1.5em; padding: 14px 6px; border-radius: 10px; cursor: pointer;" class="hoverable" id="confirm-option-button">Confirm</button>
+                <button style="font-size: 1.5em; padding: 14px 6px; border-radius: 10px; cursor: pointer;" class="hoverable" onclick="closeAll()">Cancel</button>
+            </div>
+            <div>
+                <button style="font-size: 1.5em; padding: 14px 6px; border-radius: 10px; cursor: pointer;"  onclick="openWhiteCellWindow()" class="hoverable">Open White Cell</button>
+            </div>
+            <div>
+                <button style="font-size: 1.5em; padding: 14px 6px; border-radius: 10px; cursor: pointer;"  onclick="recordGif()" class="hoverable">Record Gif</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
