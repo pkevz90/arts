@@ -1321,7 +1321,7 @@ class windowCanvas {
             description: options.description
         }
     }
-    loadDate(data = {}) {
+    loadData(data = {}) {
         // console.log('loaded');
         let {
             plotWidth = this.plotWidth, 
@@ -1352,7 +1352,7 @@ class windowCanvas {
             // Check if lists thrust and mass
             let thrust = sat.thrust || 10000
             let mass = sat.mass || 1000
-            this.satellites.push(
+            this.satellites.push(sat.appear === undefined ?
                 new Satellite({
                     position: sat.position,
                     size: sat.size,
@@ -1369,6 +1369,20 @@ class windowCanvas {
                         b.shown = false
                         return b
                     }),
+                    point: sat.point,
+                    team: sat.team
+                }) :
+                new LaunchObject({
+                    position: sat.position,
+                    size: sat.size,
+                    color: sat.color,
+                    shape: sat.shape,
+                    a: thrust/mass/1000,
+                    thrust,
+                    mass,
+                    cr: 0,
+                    area: sat.area,
+                    name: sat.name,
                     point: sat.point,
                     team: sat.team
                 })
@@ -1677,7 +1691,9 @@ class Satellite {
             isp: this.isp,
             cd: this.cd,
             cr: this.cr,
-            area: this.area
+            area: this.area,
+            appear: this.appear,
+            disappear: this.disappear
         }
     }
     propInitialState(dt) {
@@ -1804,6 +1820,7 @@ class LaunchObject extends Satellite {
         options.position = PosVel2CoeNew(options.position.slice(0,3), options.position.slice(3))
         super(options)
         let {launchTime = 0, finalTime = 18000} = options
+        this.shape = 'missile'
         this.calcTraj = function(recalcBurns = false, burnStart = 0) {
             if (mainWindow.ephemViewerMode) return // Don't recalculate trajectory if working off of an ephemeris history
             // Double check that burns are labeled correctly for if they are currently displayed
@@ -1930,7 +1947,7 @@ let timeFunction = false;
         errorList.push(error)
         let autosavedScen = JSON.parse(window.localStorage.getItem('autosave'))
         mainWindow = new windowCanvas(document.getElementById('main-plot'));
-        mainWindow.loadDate(autosavedScen);
+        mainWindow.loadData(autosavedScen);
         mainWindow.setAxisWidth('set', mainWindow.plotWidth);
         animationLoop()
         mainWindow.desired.scenarioTime = Number(document.getElementById('time-slider-range').value)
@@ -4631,7 +4648,7 @@ function loadFileAsText(fileToLoad) {
     fileReader.onload = function (fileLoadedEvent) {
         var textFromFileLoaded = fileLoadedEvent.target.result;
         textFromFileLoaded = JSON.parse(textFromFileLoaded);
-        mainWindow.loadDate(textFromFileLoaded);
+        mainWindow.loadData(textFromFileLoaded);
         mainWindow.setAxisWidth('set', mainWindow.plotWidth);
     };
     
@@ -5938,6 +5955,38 @@ function drawSatellite(satellite = {}) {
                 ctx
             });
             break;
+            points = [];
+            for (let ang = 0; ang <= 361; ang += 360/7) {
+                points.push([a*Math.sin(ang*Math.PI / 180), -a*Math.cos(ang*Math.PI / 180)])
+            }
+            drawPoints({
+                points: points,
+                color: color,
+                origin: pixelPosition,
+                ctx
+            });
+            break;
+        case 'missile':
+            points = [
+                [0, -shapeHeight*0.5],
+                [shapeHeight*0.125, -0.3125*shapeHeight],
+                [shapeHeight*0.125, 0.3125*shapeHeight],
+                [shapeHeight*0.25, 0.5*shapeHeight],
+                [shapeHeight*0.1, 0.5*shapeHeight],
+                [0, 0.3125*shapeHeight],
+                [-shapeHeight*0.1, 0.5*shapeHeight],
+                [-shapeHeight*0.25, 0.5*shapeHeight],
+                [-shapeHeight*0.125, 0.3125*shapeHeight],
+                [-shapeHeight*0.125, -0.3125*shapeHeight],
+                [0, -shapeHeight*0.5]
+            ];
+            drawPoints({
+                points: points,
+                color: color,
+                origin: pixelPosition,
+                ctx
+            });
+            break;
     }
     
     ctx.textAlign = 'center';
@@ -6760,7 +6809,7 @@ function recoverDefaultScenario(index) {
             pastActions = []
             textFromFileLoaded = JSON.parse(window.localStorage[scenarioNames[selection]]);
             lastSaveName = scenarioNames[selection].slice(5)
-            mainWindow.loadDate(textFromFileLoaded);
+            mainWindow.loadData(textFromFileLoaded);
             mainWindow.setAxisWidth('set', mainWindow.plotWidth);
         }
     }
@@ -8384,6 +8433,7 @@ let f3d = 3 // pinhole camera focal length
 function get3dLinePoints(points = [[100,200, 100],[300,400,200], [900,500,-100]], options = {}) {
     let {closed = false, color = '#ff00000', size = 2.5} = options
     let outPoints = []
+    // console.log(points.length);
     for (let index = 0; index < points.length; index++) {
         if (index < (points.length-1)) {
             outPoints.push({
@@ -8807,13 +8857,6 @@ function draw3dScene(az = azD, el = elD) {
         sat.lastCurPosUpdateTime = mainWindow.scenarioTime
         let curPos = math.multiply(r, [sat.curPos.r, sat.curPos.i, sat.curPos.c])
         if (!sat.locked) {
-            // sat.stateHistory.forEach(point => {
-            //     points.push({
-            //         color: sat.color,
-            //         position: math.multiply(r, [point.position[0], point.position[1], point.position[2]]),
-            //         size: mainWindow.trajSize*2
-            //     })
-            // })
             if (sat.appear !== undefined) points.push(...get3dLinePoints([...sat.denseHistory.filter(s => s.t < mainWindow.scenarioTime).map(point => math.multiply(r, [point.position[0], point.position[1], point.position[2]])), curPos], {color: sat.color}))
             else points.push(...get3dLinePoints([...sat.stateHistory.filter(s => s.t < mainWindow.scenarioTime).map(point => math.multiply(r, [point.position[0], point.position[1], point.position[2]])), curPos], {color: sat.color}))
             
@@ -8870,7 +8913,8 @@ function draw3dScene(az = azD, el = elD) {
         }
         sat.pixelPos = pixelPos
         // Ensure satellite drawn over other lines in same location
-        curPos[2] += 0.1*mainWindow.plotWidth
+        let curPosDisplay = curPos.slice()
+        curPosDisplay[2] += 0.1*mainWindow.plotWidth
         points.push({
             color: sat.color,
             position: curPos,
@@ -11134,7 +11178,7 @@ function openSaveWindow() {
     saveWindow.loadScenario = el => {
         let saveName = el.parentElement.getAttribute('savefile')
         let item = window.localStorage.getItem('arts_'+saveName)
-        mainWindow.loadDate(JSON.parse(item))
+        mainWindow.loadData(JSON.parse(item))
     }
 
     saveWindow.editName = el => {
@@ -11506,7 +11550,7 @@ function handleImportTextFile(inText) {
         else return handleTleFile(inText)
     }
     else {
-        mainWindow.loadDate(objectFromText)
+        mainWindow.loadData(objectFromText)
     }
 }
 
