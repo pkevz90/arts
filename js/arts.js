@@ -1799,15 +1799,22 @@ class GroundSite {
 }
 class LaunchObject extends Satellite {
     constructor(options = {}) {
-        let position = options.position
+        // Prop position back to beginning of scenario to calculate relative trajectories normally
         options.position = propToTimeAnalytic(options.position, -options.launchTime)
         options.position = PosVel2CoeNew(options.position.slice(0,3), options.position.slice(3))
         super(options)
         let {launchTime = 0, finalTime = 18000} = options
-        console.log(launchTime, finalTime);
-        this.denseHistory = calcSatTrajectoryDense(position, {
-            tStart: launchTime, tFinal: finalTime+launchTime
-        })
+        this.calcTraj = function(recalcBurns = false, burnStart = 0) {
+            if (mainWindow.ephemViewerMode) return // Don't recalculate trajectory if working off of an ephemeris history
+            // Double check that burns are labeled correctly for if they are currently displayed
+            this.burns.forEach(burn => burn.shown = recalcBurns || mainWindow.scenarioTime > burn.time ? 'post' : 'pre')
+            this.stateHistory = calcSatTrajectory(this.position, this.burns, {recalcBurns, a: this.a, startBurn: burnStart})
+            let position = propToTimeAnalytic(this.position, this.appear)
+            position = PosVel2CoeNew(position.slice(0,3), position.slice(3))
+            this.denseHistory = calcSatTrajectoryDense(position, {
+                tStart: this.appear, tFinal: this.disappear
+            })
+        }
         this.appear = launchTime
         this.disappear = finalTime+launchTime
     }
@@ -3161,26 +3168,30 @@ function handleContextClick(button) {
     if (button.id === 'launch-options') {
         let site = button.getAttribute('site')
         let siteEci = astro.latlong2eci(mainWindow.groundSites[site].coordinates.lat, mainWindow.groundSites[site].coordinates.long, new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
-        let targets = mainWindow.satellites.filter(s => s.appear === undefined).map((s,satii) => Object.values(getCurrentInertial(satii, mainWindow.scenarioTime)))
         let launchDate = new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime))
-        targets.forEach(satEci => {
+        let launchOptionList = []
+        mainWindow.satellites.forEach((sat, satIi) => {
+            if (sat.appear !== undefined) return
+            let satEci = Object.values(getCurrentInertial(satIi, mainWindow.scenarioTime))
             let launchData = Launch.calculateLaunch(siteEci, satEci, launchDate)
             if (launchData !== false) {
-                console.log(launchData);
+                if (launchData.elevationAngle < 0) return
                 let position = PosVel2CoeNew(launchData.launchState.slice(0,3), launchData.launchState.slice(3))
-                mainWindow.satellites.push(new LaunchObject({
-                    position,
-                    launchTime: (launchDate-mainWindow.startDate)/1000,
-                    finalTime: launchData.tof,
-                    name: mainWindow.groundSites[site].name+' Launch'
-                }))
+                // mainWindow.satellites.push(new LaunchObject({
+                //     position,
+                //     launchTime: (launchDate-mainWindow.startDate)/1000,
+                //     finalTime: launchData.tof,
+                //     name: mainWindow.groundSites[site].name+' Launch'
+                // }))
+                launchOptionList.push([sat.name, launchData])
             }
         })
-        console.log(siteEci, targets);
 
-        button.parentElement.innerHTML = `
-            <div class="context-item" onclick="handleContextClick(this)" id="waypoint-maneuver">Waypoint</div>
-        `
+        button.parentElement.innerHTML = launchOptionList.map(opt => {
+            return `
+                <div class="context-item" site="${mainWindow.groundSites[site].name}" launchstate="${opt[1].launchState.join('x')}" launchtime="${mainWindow.scenarioTime}" tof="${opt[1].tof}" onclick="handleContextClick(this)" id="launch-options-execute">${opt[0]} <span style="font-size: 0.5em; color: #aaa;">CATS: ${opt[1].cats.toFixed(1)}<sup>o</sup></span></div>
+            `
+        })
         //<div class="context-item" onclick="handleContextClick(this)" id="multi-maneuver">Multi-Burn</div>
         // <div class="context-item" onclick="handleContextClick(this)" id="rmoes-maneuver">Target RMOE's</div>
             // ${mainWindow.satellites.length > 1 ? '<div class="context-item" onclick="handleContextClick(this)" id="poca-maneuver">Maximize POCA</div>' : ''}
@@ -3188,6 +3199,20 @@ function handleContextClick(button) {
         let elHeight = cm.offsetHeight
         let elTop =  Number(cm.style.top.split('p')[0])
         cm.style.top = (window.innerHeight - elHeight) < elTop ? (window.innerHeight - elHeight) + 'px' : cm.style.top
+    }
+    if (button.id === 'launch-options-execute') {
+        let launchState = button.getAttribute('launchstate').split('x').map(s => Number(s))
+        let tof = Number(button.getAttribute('tof'))
+        let site = button.getAttribute('site')
+        let launchTime = Number(button.getAttribute('launchtime'))
+        let position = PosVel2CoeNew(launchState.slice(0,3), launchState.slice(3))
+        mainWindow.satellites.push(new LaunchObject({
+            position,
+            launchTime,
+            finalTime: tof,
+            name: site+' Launch'
+        }))
+        document.getElementById('context-menu').remove()
     }
     if (button.id === 'delete-site') {
         let site = button.getAttribute('site')
@@ -11019,29 +11044,37 @@ function openPlayButtonDiv(options = {}) {
             <button mode="play" onclick="clickPlayButton(this)" class="playback play"></button>
         </div>
         <div style="display: flex; justify-content: space-around; margin: 15px 10px; flex-wrap: wrap;">
-            <div style="margin-right: 30px; minWidth: 50px;">
+            <div style="margin-right: 20px; minWidth: 50px;">
                 <input style="display: none;" oninput="clickPlayButton(this, 0.0166667)" checked id="play-one" name="play-speed" type="radio" speed="0.01667"/>
                 <label style="cursor: pointer; text-decoration: underline; font-weight: 900;" for="play-one">1x</label>
             </div>
-            <div style="margin-right: 30px;">
+            <div style="margin-right: 20px;">
+                <input style="display: none;" oninput="clickPlayButton(this, 0.166667)" id="play-ten" name="play-speed" type="radio" speed="0.1667"/>
+                <label style="cursor: pointer;" for="play-ten">10x</label>
+            </div>
+            <div style="margin-right: 20px;">
                 <input style="display: none;" oninput="clickPlayButton(this, 1.66667)" id="play-hundred" name="play-speed" type="radio" speed="1.667"/>
                 <label style="cursor: pointer;" for="play-hundred">100x</label>
             </div>
-            <div style="margin-right: 30px;">
+            <div style="margin-right: 20px;">
                 <input style="display: none;" oninput="clickPlayButton(this, 16.6667)" id="play-thousand" name="play-speed" type="radio" speed="16.6667"/>
                 <label style="cursor: pointer;" for="play-thousand">1000x</label>
             </div>
-            <div style="margin-right: 30px;">
+            <div style="margin-right: 20px;">
                 <input style="display: none;" oninput="clickPlayButton(this, 33.3333)" id="play-2thousand" name="play-speed" type="radio" speed="33.3333"/>
                 <label style="cursor: pointer;" for="play-2thousand">2000x</label>
             </div>
-            <div style="margin-right: 30px;">
-                <input style="display: none;" oninput="clickPlayButton(this, 50)" id="play-3thousand" name="play-speed" type="radio" speed="33.3333"/>
+            <div style="margin-right: 20px;">
+                <input style="display: none;" oninput="clickPlayButton(this, 50)" id="play-3thousand" name="play-speed" type="radio" speed="50"/>
                 <label style="cursor: pointer;" for="play-3thousand">3000x</label>
             </div>
-            <div style="margin-right: 0px;">
+            <div style="margin-right: 20px;">
                 <input style="display: none;" oninput="clickPlayButton(this, 66.6666)" id="play-4thousand" name="play-speed" type="radio" speed="66.6666"/>
                 <label style="cursor: pointer;" for="play-4thousand">4000x</label>
+            </div>
+            <div style="margin-right: 0px;">
+                <input style="display: none;" oninput="clickPlayButton(this, 133.3333)" id="play-8thousand" name="play-speed" type="radio" speed="133.3333"/>
+                <label style="cursor: pointer;" for="play-8thousand">8000x</label>
             </div>
         </div>
     </div>
