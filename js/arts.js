@@ -492,10 +492,10 @@ class windowCanvas {
             latLong = {lat: latLong.lat*180/Math.PI, long: latLong.long*180/Math.PI, r: math.norm(latLong.r_ecef)}
             if (mainWindow.satellites[index].appear !== undefined) {
                 if (mainWindow.scenarioTime > mainWindow.satellites[index].appear && mainWindow.scenarioTime < mainWindow.satellites[index].disappear) {
-                    satellitesToDraw.push(latLong)
+                    satellitesToDraw.push({index, latLong})
                 }
             }
-            else satellitesToDraw.push(latLong)
+            else satellitesToDraw.push({index, latLong})
             if (!this.satellites[index].showGroundTrack) continue
             let satPoints = getGroundSwatchCircleCoordinates(curEci, latLong.lat, latLong.long)
             satPoints = satPoints.map(s => this.latLong2Pixel({
@@ -554,7 +554,7 @@ class windowCanvas {
             ctx.font = `${fontSize}px sans-serif`
             ctx.fillText(site.name, pixelPos[0], pixelPos[1]+fontSize/2+2)
         })
-        satellitesToDraw.map((s,ii) => {return {...s, index: ii}}).sort((a,b) => a.r-b.r).forEach(sat => {
+        satellitesToDraw.map((s,ii) => {return {...s.latLong, index: s.index}}).sort((a,b) => a.r-b.r).forEach(sat => {
             let pixelPosition = this.latLong2Pixel(sat)
             drawSatellite({
                 pixelPosition,
@@ -8380,7 +8380,7 @@ function satClusterK(nClusters = mainWindow.nLane, sats = mainWindow.satellites,
     }
 }
 setSun()
-let f3d = 10 // arbitrary number to ensure update
+let f3d = 3 // pinhole camera focal length
 function get3dLinePoints(points = [[100,200, 100],[300,400,200], [900,500,-100]], options = {}) {
     let {closed = false, color = '#ff00000', size = 2.5} = options
     let outPoints = []
