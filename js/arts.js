@@ -494,6 +494,7 @@ class windowCanvas {
                 if (mainWindow.scenarioTime > mainWindow.satellites[index].appear && mainWindow.scenarioTime < mainWindow.satellites[index].disappear) {
                     satellitesToDraw.push({index, latLong})
                 }
+                else satellitesToDraw.push({index, latLong, shown: false})
             }
             else satellitesToDraw.push({index, latLong})
             if (!this.satellites[index].showGroundTrack) continue
@@ -531,7 +532,8 @@ class windowCanvas {
                     // console.log(s, mainWindow.groundSites[s[1]].checkLimits(Object.values(getCurrentInertial(s[0])).slice(0,3)));
                     return mainWindow.groundSites[s[1]].checkLimits(Object.values(getCurrentInertial(s[0])).slice(0,3)).result
                 }).forEach(vis => {
-                    let satSeen = this.latLong2Pixel(satellitesToDraw[vis[0]])
+                    if (satellitesToDraw[vis[0]].shown === false) return
+                    let satSeen = this.latLong2Pixel(satellitesToDraw[vis[0]].latLong)
                     vis = this.latLong2Pixel(mainWindow.groundSites[vis[1]].coordinates)
                     ctx.beginPath()
                     ctx.moveTo(satSeen[0], satSeen[1])
@@ -554,7 +556,8 @@ class windowCanvas {
             ctx.font = `${fontSize}px sans-serif`
             ctx.fillText(site.name, pixelPos[0], pixelPos[1]+fontSize/2+2)
         })
-        satellitesToDraw.map((s,ii) => {return {...s.latLong, index: s.index}}).sort((a,b) => a.r-b.r).forEach(sat => {
+        satellitesToDraw.map((s,ii) => {return {...s.latLong, index: s.index, shown: s.shown}}).sort((a,b) => a.r-b.r).forEach(sat => {
+            if (sat.shown === false) return
             let pixelPosition = this.latLong2Pixel(sat)
             drawSatellite({
                 pixelPosition,
@@ -5969,17 +5972,18 @@ function drawSatellite(satellite = {}) {
         case 'missile':
             points = [
                 [0, -shapeHeight*0.5],
-                [shapeHeight*0.125, -0.3125*shapeHeight],
+                [shapeHeight*0.125, -0.25*shapeHeight],
                 [shapeHeight*0.125, 0.3125*shapeHeight],
                 [shapeHeight*0.25, 0.5*shapeHeight],
-                [shapeHeight*0.1, 0.5*shapeHeight],
-                [0, 0.3125*shapeHeight],
-                [-shapeHeight*0.1, 0.5*shapeHeight],
+                [shapeHeight*0.2, 0.49*shapeHeight],
+                [shapeHeight*0.03, 0.4*shapeHeight],
+                [-shapeHeight*0.03, 0.4*shapeHeight],
+                [-shapeHeight*0.2, 0.49*shapeHeight],
                 [-shapeHeight*0.25, 0.5*shapeHeight],
                 [-shapeHeight*0.125, 0.3125*shapeHeight],
-                [-shapeHeight*0.125, -0.3125*shapeHeight],
+                [-shapeHeight*0.125, -0.25*shapeHeight],
                 [0, -shapeHeight*0.5]
-            ];
+            ].map(s => [-s[1], s[0]]);
             drawPoints({
                 points: points,
                 color: color,
