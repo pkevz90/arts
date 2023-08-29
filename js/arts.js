@@ -490,8 +490,8 @@ class windowCanvas {
             let time = new Date(mainWindow.startDate - (-mainWindow.scenarioTime*1000))
             let latLong = astro.eci2latlong(curEci.slice(0,3), time)
             latLong = {lat: latLong.lat*180/Math.PI, long: latLong.long*180/Math.PI, r: math.norm(latLong.r_ecef)}
-            if (mainWindow.satellites[index].appear !== undefined) {
-                if (mainWindow.scenarioTime > mainWindow.satellites[index].appear && mainWindow.scenarioTime < mainWindow.satellites[index].disappear) {
+            if (mainWindow.satellites[index].doesExist !== undefined) {
+                if (mainWindow.satellites[index].doesExist()) {
                     satellitesToDraw.push({index, latLong})
                 }
                 else satellitesToDraw.push({index, latLong, shown: false})
@@ -1552,9 +1552,8 @@ class Satellite {
     currentPosition = getCurrentPosition
     drawCurrentPosition(justUpdate = false) {
         // console.log(this.disappear);
-        if (this.disappear !== undefined) {
-            if (mainWindow.scenarioTime > this.disappear) return
-            else if (mainWindow.scenarioTime < this.appear) return
+        if (this.doesExist !== undefined) {
+            if (!this.doesExist()) return
         }
         if (!this.stateHistory) return;
         let cur = this.currentPosition(mainWindow.scenarioTime);
@@ -1837,6 +1836,9 @@ class LaunchObject extends Satellite {
         }
         this.appear = launchTime
         this.disappear = finalTime+launchTime
+    }
+    doesExist(time = mainWindow.scenarioTime) {
+        return time > this.appear && time < this.disappear
     }
 
 }
@@ -3486,7 +3488,6 @@ function handleContextClick(button) {
             burn:  JSON.parse(JSON.stringify(mainWindow.satellites[sat].burns[burn]))
         })
         let result = moveBurnTime(sat, burn, Number(inputs[0].value) * 60)
-        console.log(result);
         if (!result.status) {
             inputs[0].value = ''
             return showScreenAlert(result.reason)
@@ -8881,8 +8882,8 @@ function draw3dScene(az = azD, el = elD) {
     // console.time('satellites')
 
     mainWindow.satellites.forEach((sat, satIi) => {
-        if (sat.appear !== undefined) {
-            if (mainWindow.scenarioTime < sat.appear || mainWindow.scenarioTime > sat.disappear) {
+        if (sat.doesExist !== undefined) {
+            if (!sat.doesExist()) {
                 return
             }
         }
@@ -8966,6 +8967,10 @@ function draw3dScene(az = azD, el = elD) {
     // Draw sensors
     // console.time('sensors')
     sensors.forEach(sens => {
+        // If sensor on a launch object and object does not exist anymore, do not draw sensor
+        if (mainWindow.satellites[sens.sat].doesExist !== undefined) {
+            if (!mainWindow.satellites[sens.sat].doesExist()) return
+        }
         let color = sens.color
         let sensorCenter = Object.values(mainWindow.satellites[sens.sat].curPos).slice(0,3)
         let sensorVector = sens.sensorR
