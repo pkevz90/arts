@@ -4496,27 +4496,49 @@ function changeSatelliteInputType(el) {
         return n < 10 ? '0' + n : n
     }
     let date
+    let satInputValues = [...satInputs].map(s => s.querySelector('input')).filter(s => s !== null).map(s => s.value === '' ? s.placeholder : s.value)
+    satInputValues = satInputValues.map(s => isNaN(Number(s)) ? new Date(s) : Number(s))
+    let lastInputInEci = Object.values(Coe2PosVelObject(mainWindow.originOrbit)), lastInputDate = convertTimeToDateTimeInput(mainWindow.startDate)
+    // If switching from ECI to COE, covert what the current values are=-98
+    if (satInputs[1].innerText.search('a') !== -1) {
+        let lastInput = {
+            a: satInputValues[1],
+            e: satInputValues[2],
+            i: satInputValues[3]*Math.PI/180,
+            raan: satInputValues[4]*Math.PI/180,
+            arg: satInputValues[5]*Math.PI/180,
+            tA: satInputValues[6]*Math.PI/180,
+        }
+        lastInputInEci = astro.coe2J2000(lastInput)
+    }
+    if (satInputs[1].innerText.search('X') !== -1) {
+        lastInputInEci = [
+            satInputValues[1],
+            satInputValues[2],
+            satInputValues[3],
+            satInputValues[4],
+            satInputValues[5],
+            satInputValues[6],
+        ]
+    }
     // Disable option to input states as RIC or RMOE's until there is a satellite to reference off of
     document.querySelector('#ric-sat-input').disabled = mainWindow.satellites.length === 0
     document.querySelector('#rmoe-sat-input').disabled = mainWindow.satellites.length === 0
     document.querySelector('#sat-input-info').innerHTML = mainWindow.satellites.length === 0 ? '<em>At least one satellite must exist to import with RIC or RMOE</em>' : ''
     switch (el.id) {
         case 'eci-sat-input':
-            date = new Date(mainWindow.startDate)
-            let originJ2000 = Coe2PosVelObject(mainWindow.originOrbit)
-            date = `${date.getFullYear()}-${padNumber(date.getMonth()+1)}-${padNumber(date.getDate())}T${padNumber(date.getHours())}:${padNumber(date.getMinutes())}:${padNumber(date.getSeconds())}`
+            date = lastInputDate
             satInputs[0].innerHTML = `Epoch <input class="sat-input" style="width: 20ch;" type="datetime-local" id="start-time" name="meeting-time" value="${date}">`
-            satInputs[1].innerHTML = `X <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originJ2000.x.toFixed(2)}"> km</div>`
-            satInputs[2].innerHTML = `Y <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originJ2000.y.toFixed(2)}"> km</div>`
-            satInputs[3].innerHTML = `Z <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originJ2000.z.toFixed(2)}"> km</div>`
-            satInputs[4].innerHTML = `dX <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originJ2000.vx.toFixed(2)}"> km/s</div>`
-            satInputs[5].innerHTML = `dY <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originJ2000.vy.toFixed(2)}"> km/s</div>`
-            satInputs[6].innerHTML = `dZ <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originJ2000.vz.toFixed(2)}"> km/s</div>`
+            satInputs[1].innerHTML = `X <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${lastInputInEci[0].toFixed(8)}"> km</div>`
+            satInputs[2].innerHTML = `Y <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${lastInputInEci[1].toFixed(8)}"> km</div>`
+            satInputs[3].innerHTML = `Z <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${lastInputInEci[2].toFixed(8)}"> km</div>`
+            satInputs[4].innerHTML = `dX <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${lastInputInEci[3].toFixed(8)}"> km/s</div>`
+            satInputs[5].innerHTML = `dY <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${lastInputInEci[4].toFixed(8)}"> km/s</div>`
+            satInputs[6].innerHTML = `dZ <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${lastInputInEci[5].toFixed(8)}"> km/s</div>`
             break
         case 'coe-sat-input':
-            date = new Date(mainWindow.startDate)
-            let originCOE = mainWindow.originOrbit
-            date = `${date.getFullYear()}-${padNumber(date.getMonth()+1)}-${padNumber(date.getDate())}T${padNumber(date.getHours())}:${padNumber(date.getMinutes())}:${padNumber(date.getSeconds())}`
+            date = lastInputDate
+            let originCOE = astro.j20002Coe(lastInputInEci)
             satInputs[0].innerHTML = `Epoch <input class="sat-input" style="width: 20ch;" type="datetime-local" id="start-time" name="meeting-time" value="${date}">`
             satInputs[1].innerHTML = `a <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originCOE.a.toFixed(4)}"> km</div>`
             satInputs[2].innerHTML = `e <input class="sat-input" style="font-size: 1em; width: 15ch;" type="Number" placeholder="${originCOE.e.toFixed(4)}"></div>`
@@ -4564,8 +4586,7 @@ function changeSatelliteInputType(el) {
             satInputs[6].innerHTML = `Out-of-Plane <input class="sat-input" style="font-size: 1.25em; width: 10ch;" type="Number" placeholder="0"> deg</div>`
             break
         case 'geo-sat-input':
-            date = new Date(mainWindow.startDate)
-            date = `${date.getFullYear()}-${padNumber(date.getMonth()+1)}-${padNumber(date.getDate())}T${padNumber(date.getHours())}:${padNumber(date.getMinutes())}:${padNumber(date.getSeconds())}`
+            date = lastInputDate
             satInputs[0].innerHTML = mainWindow.satellites.length === 0 ? `Epoch <input class="sat-input" style="width: 20ch; font-size: 1.25em;" type="datetime-local" id="start-time" name="meeting-time" value="${date}">` : ''
             satInputs[1].innerHTML = `Longitude <input class="sat-input" style="font-size: 1.25em; width: 10ch;" type="Number" placeholder="0"> deg</div>`
             satInputs[2].innerHTML = `Inclination <input class="sat-input" style="font-size: 1.25em; width: 10ch;" type="Number" placeholder="0"> deg</div>`
