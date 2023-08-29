@@ -3485,9 +3485,13 @@ function handleContextClick(button) {
             sat,
             burn:  JSON.parse(JSON.stringify(mainWindow.satellites[sat].burns[burn]))
         })
-        moveBurnTime(sat, burn, Number(inputs[0].value) * 60)
+        let result = moveBurnTime(sat, burn, Number(inputs[0].value) * 60)
+        console.log(result);
+        if (!result.status) {
+            inputs[0].value = ''
+            return showScreenAlert(result.reason)
+        }
         mainWindow.desired.scenarioTime = curTime
-        document.getElementById('context-menu')?.remove()
         }
     else if (button.id === 'perch-maneuver') { 
         let sat = button.parentElement.sat;
@@ -7541,12 +7545,21 @@ function moveBurnTime(sat = 0, burn = 0, dt = 3600) {
     let burnOld = JSON.parse(JSON.stringify(mainWindow.satellites[sat].burns[burn]))
     let futureBurns = mainWindow.satellites[sat].burns.filter(b => b.time > burnOld.time)
     let timeLimits = [Number(burn) === 0 ? 0 : mainWindow.satellites[sat].burns[burn - 1].time, futureBurns.length > 0 ? futureBurns[0].time : mainWindow.scenarioLength * 3600]
-    if ((burnOld.time + dt) < timeLimits[0]) return showScreenAlert('Burn too early')
-    if ((burnOld.time + dt) > timeLimits[1]) return showScreenAlert('Burn too late')
+    if ((burnOld.time + dt) < timeLimits[0]) return {
+            status: false,
+            reason: 'Burn too early'
+        }
+    if ((burnOld.time + dt) > timeLimits[1]) return {
+        status: false,
+        reason: 'Burn too late'
+    }
     mainWindow.satellites[sat].burns = mainWindow.satellites[sat].burns.filter(b => b.time < burnOld.time)
     insertDirectionBurn(sat, burnOld.time + dt, Object.values(burnOld.direction))
     mainWindow.satellites[sat].burns.push(...futureBurns)
     mainWindow.satellites[sat].calcTraj(true)
+    return {
+        status: true
+    }
 }
 
 function startBurnMonteCarlo(sat = 0, options= {}) {
