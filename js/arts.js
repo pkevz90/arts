@@ -1,6 +1,6 @@
-let appAcr = 'ROTS 2.9.3'
+let appAcr = 'ROTS 2.9.4'
 let appName = 'Relative Orbital Trajectory System'
-let cao = '24 Aug 2023'
+let cao = '28 Aug 2023'
 document.title = appAcr
 // Various housekeepin to not change html
 document.getElementById('add-satellite-panel').getElementsByTagName('span')[0].classList.add('ctrl-switch');
@@ -1260,7 +1260,7 @@ class windowCanvas {
         let startTime = Number(prompt('Start Time (hrs)', 0))
         let endTime = Number(prompt('End Time (hrs)', mainWindow.scenarioLength))
         let timeLength = Number(prompt('Video Length (seconds)', 10))
-        let resolution = prompt('Video Resolution (L x W)', '400x400').split('x').map(s => Number(s)).slice(0,2)
+        let resolution = prompt('Video Resolution (Width x Height) pixels', '400x400').split('x').map(s => Number(s)).slice(0,2)
         resolution = resolution.length < 2 ? [400,400] : resolution
         resolution = resolution.filter(s => isNaN(s)).length > 0 ? [400,400] : resolution
         closeAll();
@@ -1823,6 +1823,7 @@ class LaunchObject extends Satellite {
         super(options)
         let {launchTime = 0, finalTime = 18000} = options
         this.shape = 'missile'
+        this.cd = 0
         this.calcTraj = function(recalcBurns = false, burnStart = 0) {
             if (mainWindow.ephemViewerMode) return // Don't recalculate trajectory if working off of an ephemeris history
             // Double check that burns are labeled correctly for if they are currently displayed
@@ -2305,10 +2306,10 @@ function keydownFunction(key) {
     else if (key.key === '<' && key.shiftKey) mainWindow.trajSize = mainWindow.trajSize > 0.5 ? mainWindow.trajSize - 0.1 : mainWindow.trajSize
     else if (key.key === '>' && key.shiftKey) mainWindow.trajSize += 0.1
     else if (key.key === '.') {
-        mainWindow.changeTime(mainWindow.scenarioTime + 120, true)
+        mainWindow.changeTime(mainWindow.scenarioTime + mainWindow.scenarioLength*3600/1440, true)
     }
     else if (key.key === ',') {
-        mainWindow.changeTime(mainWindow.scenarioTime - 120, true)
+        mainWindow.changeTime(mainWindow.scenarioTime - mainWindow.scenarioLength*3600/1440, true)
     }
     else if (key.key === 'E' && key.shiftKey && key.altKey) downloadFile('error_file.txt', errorList.map(e => e.stack).join('\n'))
     else if (key.key === 'w' && key.altKey) openWhiteCellWindow()
@@ -3092,24 +3093,6 @@ function handleContextClick(button) {
         let elTop =  Number(cm.style.top.split('p')[0])
         cm.style.top = (window.innerHeight - elHeight) < elTop ? (window.innerHeight - elHeight) + 'px' : cm.style.top
     }
-    if (button.id === 'add-site-group') {
-        // button.parentElement.innerHTML = ''
-        button.parentElement.innerHTML = Object.keys(sensorGroups).map(group => {
-            return `<div class="context-item" group=${group} onclick="handleContextClick(this)" id="add-site-group-submit">${group.toUpperCase()}</div>`
-        })
-    }
-    if (button.id === 'add-site-group-submit') {
-        let group = button.getAttribute('group')
-        sensorGroups[group].forEach(sens => {
-            mainWindow.groundSites.push(new GroundSite({
-                name: sens[0],
-                long: sens[1][1],
-                lat: sens[1][0],
-                color: '#E17D64'
-            }))
-        })
-        document.getElementById('context-menu')?.remove();
-    }
     if (button.id === 'save-conic-volume') {
         let sat = button.getAttribute('sat')
         let inputs = [...button.parentElement.getElementsByTagName('input')].map(s => Number(s.value === '' ? s.placeholder: s.value));
@@ -3129,7 +3112,28 @@ function handleContextClick(button) {
         }
         mainWindow.satellites[sat].conicVolumes.push(volume)
         document.getElementById('context-menu')?.remove();
-        
+        if (!threeD) {
+            showScreenAlert('Currently, conic volumes only show in 3D view')
+            keydownFunction({key: 'x'})
+        }
+    }
+    if (button.id === 'add-site-group') {
+        // button.parentElement.innerHTML = ''
+        button.parentElement.innerHTML = Object.keys(sensorGroups).map(group => {
+            return `<div class="context-item" group=${group} onclick="handleContextClick(this)" id="add-site-group-submit">${group.toUpperCase()}</div>`
+        })
+    }
+    if (button.id === 'add-site-group-submit') {
+        let group = button.getAttribute('group')
+        sensorGroups[group].forEach(sens => {
+            mainWindow.groundSites.push(new GroundSite({
+                name: sens[0],
+                long: sens[1][1],
+                lat: sens[1][0],
+                color: '#E17D64'
+            }))
+        })
+        document.getElementById('context-menu')?.remove();
     }
     if (button.id === 'delete-conic-volume') {
         if (button.innerText === 'Confirm Delete?') {
