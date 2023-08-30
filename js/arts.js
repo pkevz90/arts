@@ -570,8 +570,8 @@ class windowCanvas {
             })
         })
         // Draw Moon
-        ctx.fillStyle = 'rgb(140,140,140)'
         let moonEci = astro.moonEciFromTime(new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
+        let sunEci = astro.sunEciFromTime(new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
         let moonCoordinates = astro.eci2latlong(moonEci, new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
         moonCoordinates = {
             lat: moonCoordinates.lat * 180 / Math.PI,
@@ -581,12 +581,24 @@ class windowCanvas {
         ctx.textBaseline = 'top'
         ctx.font = '20px serif'
         moonCoordinates = this.latLong2Pixel(moonCoordinates)
+        let moonPhase = astro.moonPhaseFromEci(moonEci, sunEci)
+        let crescentFillColor = moonPhase > 0.5 ? 'rgb(140,140,140)' : 'rgb(50,50,50)'
+        moonPhase = moonPhase < 0.5 ? 1-moonPhase : moonPhase
+        ctx.fillStyle = 'rgb(140,140,140)'
         ctx.beginPath()
-        ctx.arc(moonCoordinates[0], moonCoordinates[1], 6, 0, 2*Math.PI)
+        ctx.arc(moonCoordinates[0], moonCoordinates[1], 10, -Math.PI/2, Math.PI/2)
         ctx.fill()
-        ctx.fillText('Moon',moonCoordinates[0], moonCoordinates[1]+4)
+        ctx.fillStyle = 'rgb(60,60,60)'
+        ctx.beginPath()
+        ctx.arc(moonCoordinates[0], moonCoordinates[1], 10, Math.PI/2, -Math.PI/2)
+        ctx.fill()
+        ctx.fillStyle = crescentFillColor
+        ctx.beginPath()
+        ctx.ellipse(moonCoordinates[0], moonCoordinates[1], 20*(moonPhase-0.5),10, 0,0, 2*Math.PI)
+        ctx.fill()
+        ctx.fillStyle = 'rgb(140,140,140)'
+        ctx.fillText('Moon',moonCoordinates[0], moonCoordinates[1]+8)
         // Draw Sun
-        let sunEci = astro.sunEciFromTime(new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
         let sunCoordinates = astro.eci2latlong(sunEci, new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
         sunCoordinates = {
             lat: sunCoordinates.lat * 180 / Math.PI,
@@ -597,12 +609,12 @@ class windowCanvas {
         sunCoordinates = this.latLong2Pixel(sunCoordinates)
         ctx.fillStyle = 'rgb(225,112,0)'
         ctx.beginPath()
-        ctx.arc(sunCoordinates[0], sunCoordinates[1], 6, 0, 2*Math.PI)
+        ctx.arc(sunCoordinates[0], sunCoordinates[1], 10, 0, 2*Math.PI)
         ctx.fill()
         ctx.textAlign = 'center'
         ctx.textBaseline = 'top'
         ctx.font = '20px serif'
-        ctx.fillText('Sun',sunCoordinates[0], sunCoordinates[1]+4)
+        ctx.fillText('Sun',sunCoordinates[0], sunCoordinates[1]+8)
         ctx.fillStyle =  this.colors.foregroundColor
         ctx.globalAlpha =  0.125
         let lastPoint = 0

@@ -137,6 +137,42 @@ class astro {
         let lat = math.asin(sinD(coordinates.lat)*cosD(epsilon)+cosD(coordinates.lat)*sinD(epsilon)*sinD(coordinates.long))*180/Math.PI
         return [cosD(long)*cosD(lat), sinD (long)*cosD(lat), sinD(lat)].map(s => s*coordinates.r);
     }
+    static moonPhase(date = new Date(), eciOrigin = [0,0,0]) {
+        let moonEci = math.subtract(astro.moonEciFromTime(date), eciOrigin)
+        let moonPosition = {
+            rightAscension: Math.atan2(moonEci[1], moonEci[0]),
+            declination: Math.atan(moonEci[2]/ math.norm(moonEci.slice(0,2)))
+        }
+        let sunEci = math.subtract(astro.sunEciFromTime(date), eciOrigin)
+        let sunPosition = {
+            rightAscension: Math.atan2(sunEci[1],  sunEci[0]),
+            declination: Math.atan(sunEci[2]/ math.norm(sunEci.slice(0,2)))
+        }
+        let cosPsi = Math.sin(sunPosition.declination)*Math.sin(moonPosition.declination)+Math.cos(sunPosition.declination)*Math.cos(moonPosition.declination)*Math.cos(sunPosition.rightAscension-moonPosition.rightAscension)
+        let cosI = -cosPsi
+        let k = (1+cosI)/2
+        return k
+        console.log(k); 
+        let tanXi = (Math.cos(sunPosition.declination)*Math.sin(sunPosition.rightAscension-moonPosition.rightAscension)/(Math.sin(sunPosition.declination)*Math.sin(moonPosition.declination)-Math.cos(sunPosition.declination)*Math.sin(moonPosition.declination)*Math.cos(sunPosition.rightAscension-moonPosition.rightAscension)))
+        console.log(tanXi, math.atan(tanXi)*180/Math.PI);
+    }
+    static moonPhaseFromEci(moonEci, sunEci) {
+        let moonPosition = {
+            rightAscension: Math.atan2(moonEci[1], moonEci[0]),
+            declination: Math.atan(moonEci[2]/ math.norm(moonEci.slice(0,2)))
+        }
+        let sunPosition = {
+            rightAscension: Math.atan2(sunEci[1],  sunEci[0]),
+            declination: Math.atan(sunEci[2]/ math.norm(sunEci.slice(0,2)))
+        }
+        let cosPsi = Math.sin(sunPosition.declination)*Math.sin(moonPosition.declination)+Math.cos(sunPosition.declination)*Math.cos(moonPosition.declination)*Math.cos(sunPosition.rightAscension-moonPosition.rightAscension)
+        let cosI = -cosPsi
+        let k = (1+cosI)/2
+        return k
+        console.log(k); 
+        let tanXi = (Math.cos(sunPosition.declination)*Math.sin(sunPosition.rightAscension-moonPosition.rightAscension)/(Math.sin(sunPosition.declination)*Math.sin(moonPosition.declination)-Math.cos(sunPosition.declination)*Math.sin(moonPosition.declination)*Math.cos(sunPosition.rightAscension-moonPosition.rightAscension)))
+        console.log(tanXi, math.atan(tanXi)*180/Math.PI);
+    }
     static sunEciFromTime(date = new Date()) {
         let jdUti = astro.julianDate(date.getFullYear(), date.getMonth() + 1, date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds() + date.getMilliseconds())
         let tUti = (jdUti - 2451545) / 36525
