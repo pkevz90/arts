@@ -5,6 +5,7 @@ class StateMachine {
             default: new State()
         }
         this.name = name
+        this.burns = []
         this.currentState = 'default'
     }
 
@@ -12,12 +13,18 @@ class StateMachine {
 
     }
 
-    runCurrentState(states = {sat: [42164,0,0,0,3.014,0]}, burns = [], time) {
-        let stateReturn = this.states[this.currentState].runState(states, burns, time)
-        console.log(stateReturn);
+    runCurrentState(states = {sat: [42164,0,0,0,3.014,0]}, time=0) {
+        let stateReturn = this.states[this.currentState].runState(states, this.burns, time)
+        this.currentState = stateReturn.switch === false ? this.currentState : stateReturn.switch
+        if (stateReturn.action !== null) {
+            this.burns.push({t: time, direction: stateReturn.action})
+        }
+        console.log(this.burns, stateReturn);
     }
     
-    getStateFromHistory(history, time)
+    getStateFromHistory(history, time) {
+
+    }
 
     runHistory(stateHistories = {}, timeFinal = 17200, dt = 600) {
         if (stateHistories[this.name] === undefined) return
@@ -53,12 +60,12 @@ class State {
             // Check if any of the criteria functions return true, if so, list that state to switch too
             let flag = this.exitCriteriaList[index].evaluate(state, burns, time)
             if (flag) {
-                switchState = this.exitCriteriaList[index].target
-                return
+                switchState = this.exitCriteriaList[index].toState
+                break
             }
         }
         // Return both the action from current state and the state for the next time step 
-
+        return {action: this.calculateAction(state, burns, time), switch: switchState}
     }
     calculateAction(state, burns, time) {
         return this.action.returnAction(state, burns, time)
@@ -75,7 +82,7 @@ class StateAction {
     }
     burn(state, burns, time) {
         let burnTimes = burns.map(b => b.t)
-        if (burnTimes.map(b => Math.abs(b-time)).filter(b => b < this.parameters.limits).length > 0) {
+        if (burnTimes.map(b => Math.abs(b-time)).filter(b => b < this.parameters.limit).length > 0) {
             return null
         }
         else {
@@ -94,8 +101,9 @@ class StateAction {
 }
 
 class ExitCriteria {
-    constructor(name='sat', target, parameters = ['curRange', [100]]) {
+    constructor(name='sat', target, toState, parameters = ['curRange', [100]]) {
         this.target = target
+        this.toState = toState
         this.name = name
         // Available criteria
         //  curRangeLess: current range to specified satellite within criteria [range]
@@ -138,10 +146,10 @@ let sm
 function buildTestStateMachine() {
     sm = new StateMachine({name: 'sat1'})
     let slideState = new State()
-    slideState.exitCriteriaList.push(new ExitCriteria('sat1','sat2', ['curRangeGreater', [100]]))
+    slideState.exitCriteriaList.push(new ExitCriteria('sat1','sat2', 'default',['curRangeGreater', [100]]))
     slideState.action = new StateAction({type: 'burn', parameters: {r: 5, i: 0, c: 0, limit: 7200}, target: 'sat2'})
 
-    sm.states.default.exitCriteriaList.push(new ExitCriteria('sat1','sat2', ['curRangeLess', [100]]))
+    sm.states.default.exitCriteriaList.push(new ExitCriteria('sat1','sat2', 'slide',['curRangeLess', [100]]))
     sm.states.slide = slideState
 }
 buildTestStateMachine()
