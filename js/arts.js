@@ -4626,7 +4626,7 @@ function changeSatelliteInputType(el) {
 function checkJ200StringValid(string) {
     string = string.split(/ {2,}/).filter(s => s !== '')
     if (string.length < 7) return false
-    date = string.shift()
+    date = string.shift().replace('z','')
     date = new Date(date)
     if (date == 'Invalid Date') return false
     string = string.map(s => Number(s))
@@ -7977,6 +7977,7 @@ function uploadTles(event) {
 
 function tellInputStateFileType(file) {
     // Tells if file is J2000 or TLE file
+    let vcmregexp = /\d{1,}\.\d{1,}|\d{1,2} [a-zA-Z]{3,4} \d{4} \d{2}:\d{2}:\d{2}/gm
     if (file.search(/ -?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d*/m) !== -1) return 'j2000'
     else if (file.search(/^1 {1,}\d*.* {1,}\d{5}\./m) !== -1 && file.search(/^2 {1,}\d*/m) !== -1) {
         console.log('tle');
@@ -7985,7 +7986,7 @@ function tellInputStateFileType(file) {
     }
     else if (file.search('EphemerisTimePosVel') !== -1) return 'ephem'
     else if (file.search(/[l|L]at/) !== -1 && file.search(/[l|L]on/) !== -1) return 'site'
-    else if (file.search(/ECI Position/i)) return 'ecilist'
+    // else if (Array.from(file.matchAll(vcmregexp), (m) => m[0]).length >= 7) return 'vcm'
     return 'j2000'
 }
 
@@ -11601,16 +11602,21 @@ function handleImportTextFile(inText) {
     }
     if (objectFromText === undefined) {
         let fileType = tellInputStateFileType(inText)
-        
+        console.log(fileType);
         if (fileType === 'j2000') return handleStkJ200File(inText)
         if (fileType === 'ecilist') return handleEciList(inText)
         if (fileType === 'ephem') return handleEphemFile(inText)
         if (fileType === 'site') return handleSiteFile(inText)
+        if (fileType === 'vcm') return handleVcmFile(inText)
         else return handleTleFile(inText)
     }
     else {
         mainWindow.loadData(objectFromText)
     }
+}
+
+function handleVcmFile(inText) {
+    
 }
 
 function handleEciList(inText) {
