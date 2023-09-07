@@ -474,6 +474,46 @@ class astro {
             ...math.add(math.multiply(Cd, math.transpose([math.subtract(rD, rC)])), math.multiply(C, math.transpose([math.subtract(drD, drC)])))
         ])
     }
+    static Eci2RicRotation(chief) {
+        
+        let rC = chief.slice(0,3), drC = chief.slice(3)
+        let h = math.cross(rC, drC);
+        let rcN = math.norm(rC)
+        let ricX = math.dotDivide(rC, rcN);
+        let ricZ = math.dotDivide(h, math.norm(h));
+        let ricY = math.cross(ricZ, ricX);
+        let ricXd = math.dotMultiply(1 / rcN, math.subtract(drC, math.dotMultiply(math.dot(ricX, drC), ricX)));
+        let ricYd = math.cross(ricZ, ricXd);
+        let ricZd = [0,0,0];
+    
+        let C = math.transpose([ricX, ricY, ricZ]);
+        let Cd = math.transpose([ricXd, ricYd, ricZd]);
+        return {
+            C, Cd
+        }
+    }
+    static Ric2Eci(rHcw, rInert) {
+        let rC = rInert.slice(0,3), drC = rInert.slice(3), drHcw = rHcw.slice(3)
+        rHcw = rHcw.slice(0,3)
+        let h = math.cross(rC, drC);
+        let rcN = math.norm(rC)
+        let ricX = math.dotDivide(rC, rcN);
+        let ricZ = math.dotDivide(h, math.norm(h));
+        let ricY = math.cross(ricZ, ricX);
+    
+        let ricXd = math.dotMultiply(1 / rcN, math.subtract(drC, math.dotMultiply(math.dot(ricX, drC), ricX)));
+        let ricYd = math.cross(ricZ, ricXd);
+        let ricZd = [0,0,0];
+    
+        let C = math.transpose([ricX, ricY, ricZ]);
+        let Cd = math.transpose([ricXd, ricYd, ricZd]);
+        let rEci = math.squeeze(math.multiply(C, math.transpose([rHcw])))
+        let drEci = math.squeeze(math.add(math.multiply(Cd, math.transpose([rHcw])), math.multiply(C, math.transpose([drHcw]))))
+        return math.squeeze([
+            ...math.add(rEci, rC),
+            ...math.add(drEci, drC)
+        ])
+    }
     static pointRadialDistance(lat1 = 0,lon1 = 0,bearing = 10,rdistance = 5) {
         // Assumes degrees
         let rlat1 = lat1*Math.PI/180;
