@@ -2925,14 +2925,9 @@ function startContextClick(event) {
         else if (!mainWindow.latLongMode) {
             newInnerHTML += `
                 <div class="context-item" id="maneuver-options" onclick="handleContextClick(this)" onmouseover="handleContextClick(event)">Manuever Options</div>
-                <div class="context-item" sat="${activeSat}" id="prop-options-set" onclick="handleContextClick(this)" onmouseover="handleContextClick(event)">Set Prop Options</div>
                 <div class="context-item" onclick="handleContextClick(this)" id="prop-options">Propagate To</div>
-                <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-covariance">${mainWindow.satellites[activeSat].cov === undefined ? 'Set' : 'Delete'} Covariance</div>
-                <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-reachability">${mainWindow.satellites[activeSat].reach === undefined ? 'Display' : 'Delete'} Reachability</div>
-                <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-conic-volume">Edit Conic Volumes</div>
-                ${mainWindow.satellites.length > 1 ? '<div class="context-item" onclick="handleContextClick(this)" id="display-data-1">Display Data</div>' : ''}
-                ${mainWindow.satellites[activeSat].burns.length > 0 ? `<div sat="${activeSat}" class="context-item" onclick="openBurnsWindow(this)" id="open-burn-window">Open Burns Window</div>` : ''}
-            `
+                <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="user-actions">User Actions</div>
+                `
         }
         else {
             newInnerHTML += `
@@ -3051,6 +3046,22 @@ function handleContextClick(button) {
         let elTop =  Number(cm.style.top.split('p')[0])
         cm.style.top = (window.innerHeight - elHeight) < elTop ? (window.innerHeight - elHeight) + 'px' : cm.style.top
     }
+    if (button.id === 'user-actions') {
+        let activeSat = button.getAttribute('sat')
+        button.parentElement.innerHTML = `
+            <div class="context-item" sat="${activeSat}" id="prop-options-set" onclick="handleContextClick(this)" onmouseover="handleContextClick(event)">Set Prop Options</div>
+            ${mainWindow.satellites.length > 1 ? '<div sat="${activeSat}" class="context-item" onclick="handleContextClick(this)" id="display-data-1">Display Data</div>' : ''}
+            ${mainWindow.satellites[activeSat].burns.length > 0 ? `<div sat="${activeSat}" class="context-item" onclick="openBurnsWindow(this)" id="open-burn-window">Open Burns Window</div>` : ''}
+            <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-covariance">${mainWindow.satellites[activeSat].cov === undefined ? 'Set' : 'Delete'} Covariance</div>
+            <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-reachability">${mainWindow.satellites[activeSat].reach === undefined ? 'Display' : 'Delete'} Reachability</div>
+            <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-conic-volume">Edit Conic Volumes</div>
+            <div class="context-item" onclick="generateStkEphemFile(${activeSat})" id="set-conic-volume">Export .e File</div>
+        `
+       let cm = document.getElementById('context-menu')
+       let elHeight = cm.offsetHeight
+       let elTop =  Number(cm.style.top.split('p')[0])
+       cm.style.top = (window.innerHeight - elHeight) < elTop ? (window.innerHeight - elHeight) + 'px' : cm.style.top
+   }
     if (button.id === 'burn-select-options') {
         let sat = button.getAttribute('sat')
         let burn = button.getAttribute('burn')
@@ -11658,11 +11669,10 @@ function handleEciList(inText) {
 function handleEphemFile(text) {
     text = text.split(/\n{1,}/)
     let baseDate = new Date(text.find(s => s.search('ScenarioEpoch') !== -1).split(/ {2,}/)[1])
-    let ephemStart = text.findIndex(s => s.search('EphemerisTimePosVel') !== -1) + 1
+    let ephemStart = text.findIndex(s => s.search('EphemerisTime') !== -1) + 1
     let ephemEnd = text.findIndex(s => s.search('END Ephemeris') !== -1)
-
     ephemEnd = ephemEnd === -1 ? text.length : ephemEnd
-    let states = text.slice(ephemStart, ephemEnd).filter(s => s !== '\r').map(s => s.split(/ {1,}/).filter(s => s.length > 0).map(r => Number(r)))
+    let states = text.slice(ephemStart, ephemEnd).filter(s => s !== '\r').map(s => s.split(/ {1,}/).filter(s => s.length > 0).map(r => Number(r))).filter(s => s.length > 0)
     states = states.map(s => {
         let newDate = new Date(baseDate - (-1000*s[0]))
         return [newDate, ...(math.norm(s.slice(1,4)) > 6000000 ? s.slice(1).map(s => s/1000) : s.slice(1))] 
@@ -12156,6 +12166,22 @@ let sensorGroups = {
         ['Kwajalein', [9.39, 167.48]],
         ['Millstone', [42.62, -71.49]]
     ]
+}
+
+function generateStkEphemFile(sat = 0, time = mainWindow.scenarioTime) {
+    let date = astro.toStkDateFormat(new Date(mainWindow.startDate - (-1000*time)))
+    let head = `stk.v.10.0
+BEGIN Ephemeris
+NumberOfEphemerisPoints 1
+ScenarioEpoch           ${date}
+CentralBody             Earth
+CoordinateSystem        J2000
+DistanceUnit            Meters
+
+EphemerisTimePosVel
+    `
+    let satInertial = (0).toExponential(10) + '   ' + Object.values(getCurrentInertial(sat, time)).map(s => (1000*s).toExponential(10)).join('   ')
+    downloadFile(mainWindow.satellites[sat].name.replace(/ {1,}/,'_') + '.e', head + '\n' + satInertial + '\n\n' + 'END Ephemeris');
 }
 
 // function createSideMenu() {
