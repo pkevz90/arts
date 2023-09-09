@@ -9,10 +9,6 @@ class StateMachine {
         this.currentState = 'default'
     }
 
-    addState(options = {}) {
-
-    }
-
     machineFromString(inputString = '') {
         inputString = inputString.split(/\n|\r/)
         // console.log(inputString);
@@ -57,9 +53,10 @@ class StateMachine {
             stateReturn = this.states[this.currentState].runState(states, this.burns, time)
             
         }
-        if (stateReturn.action !== null) {
+        if (stateReturn.action !== null && math.norm(stateReturn.action) > 0.00001) {
             this.burns.push({t: time, direction: stateReturn.action})
         }
+        else return [null]
         return [stateReturn.action];
     }
     
@@ -73,6 +70,7 @@ class State {
         this.action = action
         this.name = name
         this.exitCriteriaList = exitCriteriaList
+        this.entryTime
         // Return both the action from current state and the state for the next time step 
     }
     runState(state = {sat: [42164,0,0,0,0,0]}, burns, time) {
@@ -80,14 +78,14 @@ class State {
         let switchState = false
         for (let index = 0; index < this.exitCriteriaList.length; index++) {
             // Check if any of the criteria functions return true, if so, list that state to switch too
-            let flag = this.exitCriteriaList[index].evaluate(state, burns, time)
+            let flag = this.exitCriteriaList[index].evaluate(state, burns, time, this.entryTime)
             if (flag) {
                 switchState = this.exitCriteriaList[index].toState
                 break
             }
         }
         // Return both the action from current state and the state for the next time step 
-        return {action: this.calculateAction(state, burns, time), switch: switchState}
+        return {action: this.calculateAction(state, burns, time, this.entryTime), switch: switchState}
     }
     calculateAction(state, burns, time) {
         return this.action.returnAction(state, burns, time)
@@ -102,7 +100,7 @@ class StateAction {
         this.target = target
         this.name = name
     }
-    burn(state, burns, time) {
+    burn(state, burns, time, stateEntryTime) {
         let burnTimes = burns.map(b => b.t)
         if (burnTimes.map(b => Math.abs(b-time)).filter(b => b < this.parameters[3]).length > 0) {
             return null
@@ -115,13 +113,13 @@ class StateAction {
     coast() {
         return null
     }
-    returnToPosition(state, burns, time) {
+    returnToPosition(state, burns, tim, stateEntryTimee) {
         return null
     }
-    returnAction(state,burns, time) {
+    returnAction(state,burns, time, stateEntryTime) {
         return this[this.action](state, burns, time)
     }
-    setDrift(state, burns, time) {
+    setDriftToAltitude(state, burns, time, stateEntryTime) {
         // console.log(burns);
         let burnTimes = burns.map(b => b.t)
         if (burnTimes.map(b => Math.abs(b-time)).filter(b => b < this.parameters[2]).length > 0) {
@@ -139,10 +137,38 @@ class StateAction {
         // console.log(astro.j20002Coe(correctedEci));
         return burnEci
     }
-    enterNmc(state, burns, time) {
+    setDriftToTarget(state, burns, time, stateEntryTime) {
+        // [rel drift rate (pos for towards in deg/day), burn spacing]
+        let burnTimes = burns.map(b => b.t)
+        if (burnTimes.map(b => Math.abs(b-time)).filter(b => b < this.parameters[1]).length > 0) {
+            return null
+        }
+        let targetSemiMajorAxis = astro.j20002Coe(state[this.target]).a
+        let targetMm = (398600.4418/targetSemiMajorAxis**3)**0.5
+
+        let angleToTarget = math.cross(state[this.target].slice(0,3), state[this.name].slice(0,3))
+        let angularMomentumTarget = math.cross(state[this.target].slice(0,3), state[this.target].slice(3))
+        let behindTarget = angleToTarget[2] * angularMomentumTarget[2] < 0
+        console.log(angleToTarget, angularMomentumTarget);
+        let desiredDriftRate = (this.parameters[0]/86400)*Math.PI/180
+        let desiredMm = targetMm + (behindTarget ? 1 : -1)*desiredDriftRate
+        let desiredSemiMajorAxis = (398600.4418/desiredMm**2)**(1/3)
+
+        let targetVelocity = (398600.4418*(2/math.norm(state[this.name].slice(0,3))-1/desiredSemiMajorAxis)) ** 0.5
+        let rEci2Ric = astro.Eci2RicRotation(state[this.name])
+        let currentRicVelocityVector = math.multiply(math.transpose(rEci2Ric.C), state[this.name].slice(3))
+        let inTrackBurnTarget = (targetVelocity**2-currentRicVelocityVector[0]**2-currentRicVelocityVector[2]**2)**0.5
+        let burnRic = [0,inTrackBurnTarget-currentRicVelocityVector[1],0]
+        // console.log(burnRic, inTrackBurnTarget, currentRicVelocityVector[1]);
+        let burnEci = math.multiply(rEci2Ric.C, burnRic)
+        // let correctedEci = math.add(state[this.name], [0,0,0,...burnEci])
+        // console.log(astro.j20002Coe(correctedEci));
+        return burnEci
+    }
+    enterNmc(state, burns, time, stateEntryTime) {
         // Paremeters [size, maxDv]
     }
-    increaseRangeRate(state, burns, time) {
+    increaseRangeRate(state, burns, time, stateEntryTime) {
         let burnTimes = burns.map(b => b.t)
         if (burnTimes.map(b => Math.abs(b-time)).filter(b => b < this.parameters[2]).length > 0) {
             return null
@@ -160,7 +186,7 @@ class StateAction {
         return rangeRateBurn
 
     }
-    decreaseRangeRate(state, burns, time) {
+    decreaseRangeRate(state, burns, time, stateEntryTime) {
         let burnTimes = burns.map(b => b.t)
         if (burnTimes.map(b => Math.abs(b-time)).filter(b => b < this.parameters[2]).length > 0) {
             return null
@@ -178,16 +204,16 @@ class StateAction {
         return rangeRateBurn
 
     }
-    setPoca(state, burns, time) {
+    setPoca(state, burns, time, stateEntryTime) {
         return null
     }
-    gainSun(state, burns, time) {
+    gainSun(state, burns, time, stateEntryTime) {
         return null
     }
-    gotoWaypoint(state, burns, time) {
+    gotoWaypoint(state, burns, time, stateEntryTime) {
         return null
     }
-    gotoLongitude(state, burns, time) {
+    gotoLongitude(state, burns, time, stateEntryTime) {
         return null
     }
 }
@@ -208,32 +234,42 @@ class StateTransition {
         // Criteria consist of [type, criteria]
         this.parameters = parameters
     }
-    evaluate(state, burns, time) {
+    evaluate(state, burns, time, stateEntryTime) {
         return this[this.parameters[0]](state, burns, time)
     }
-    curRangeLess(state, burns, time) {
+    angularDifferenceGreater(state, burns, time, stateEntryTime) {
+        // Paramter(s) [angle to be greater than]
+        let diff = math.acos(math.dot(state[this.target].slice(0,3), state[this.name].slice(0,3))/math.norm(state[this.target].slice(0,3))/math.norm(state[this.name].slice(0,3)))*180/Math.PI
+        return diff > this.parameters[1][0]
+    }
+    angularDifferenceLess(state, burns, time, stateEntryTime) {
+        // Paramter(s) [angle to be less than]
+        let diff = math.acos(math.dot(state[this.target].slice(0,3), state[this.name].slice(0,3))/math.norm(state[this.target].slice(0,3))/math.norm(state[this.name].slice(0,3)))*180/Math.PI
+        return diff < this.parameters[1][0]
+    }
+    curRangeLess(state, burns, time, stateEntryTime) {
         console.log(this.target);
         return math.norm(math.subtract(state[this.name].slice(0,3), state[this.target].slice(0,3))) < this.parameters[1]
     }
-    curRangeGreater(state, burns, time, criteria) {
+    curRangeGreater(state, burns, time, stateEntryTime) {
         return math.norm(math.subtract(state[this.name].slice(0,3), state[this.target].slice(0,3))) > this.parameters[1]
     }
-    pocaLess(state, burns, time, criteria) {
+    pocaLess(state, burns, time, stateEntryTime) {
         return false
     }
-    pocaGreater(state, burns, time, criteria) {
+    pocaGreater(state, burns, time, stateEntryTime) {
         return false
     }
-    intercept(state, burns, time, criteria) {
+    intercept(state, burns, time, stateEntryTime) {
         return false
     }
-    afterTime(state, burns, time, criteria) {
+    afterTime(state, burns, time, stateEntryTime) {
         return false
     }
-    beforeTime(state, burns, time, criteria) {
+    beforeTime(state, burns, time, stateEntryTime) {
         return false
     }
-    driftRateLess(state, burns, time) {
+    driftRateLess(state, burns, time, stateEntryTime) {
         // console.log(this.parameters);
         let currentMm = astro.j20002Coe(state[this.name]).a
         currentMm = (398600.4418/currentMm**3)**0.5
@@ -241,8 +277,27 @@ class StateTransition {
         // console.log(math.abs(currentMm-targetMm), this.parameters[1][0]);
         return math.abs(currentMm-targetMm) < this.parameters[1][0]
     }
-    driftRateMore(state, burns, time) {
-        return false
+    driftRateMore(state, burns, time, stateEntryTime) {
+        let currentMm = astro.j20002Coe(state[this.name]).a
+        currentMm = (398600.4418/currentMm**3)**0.5
+        let targetMm = (398600.4418/this.parameters[1][1]**3)**0.5
+        // console.log(math.abs(currentMm-targetMm), this.parameters[1][0]);
+        return math.abs(currentMm-targetMm) > this.parameters[1][0]
+    }
+    driftRateToTargetLess(state, burns, time, stateEntryTime) {
+        // console.log(this.parameters);
+        let currentMm = astro.j20002Coe(state[this.name]).a
+        currentMm = (398600.4418/currentMm**3)**0.5
+        let targetMm = astro.j20002Coe(state[this.target]).a
+        // console.log(math.abs(currentMm-targetMm), this.parameters[1][0]);
+        return math.abs(currentMm-targetMm) < this.parameters[1][0]
+    }
+    driftRateToTargetMore(state, burns, time, stateEntryTime) {
+        let currentMm = astro.j20002Coe(state[this.name]).a
+        currentMm = (398600.4418/currentMm**3)**0.5
+        let targetMm = astro.j20002Coe(state[this.target]).a
+        // console.log(math.abs(currentMm-targetMm), this.parameters[1][0]);
+        return math.abs(currentMm-targetMm) > this.parameters[1][0]
     }
 
 }
@@ -269,6 +324,21 @@ let buildString = `
         action enterNmc [50, 10800, 7200]
         TRANSITION default afterTime [10800]
 `
+
+buildString = `
+STATE default
+    TRANSITION drifttowards angularDifferenceGreater [0.5] sat2        
+	TRANSITION nmc angularDifferenceLess [0.1] sat2
+
+STATE drifttowards
+    ACTION setDriftToTarget [0.5,7200] sat2
+    TRANSITION default angularDifferenceLess [0.5] sat2
+
+STATE nmc        
+    ACTION setDriftToTarget [0 ,7200] sat2
+    TRANSITION default angularDifferenceGreater [1] sat2
+    TRANSITION default driftRateMore [0.1] sat2
+    `
 
 let sm
 function buildTestStateMachine() {
@@ -302,7 +372,7 @@ function testStateMachine(sat1Eci = [38035.49754266645, 17992.30040739409, 33.01
 }
 
 function testStateMachineWithScenario(sat1 = 0, sat2 = 1) {
-    let time = mainWindow.scenarioTime, finalTime = 86400*2, dt = 600
+    let time = mainWindow.scenarioTime, finalTime = 86400*5, dt = 600
     
     sm = new StateMachine({name: 'sat1'})
     sm.machineFromString(buildString)
