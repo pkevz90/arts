@@ -9717,10 +9717,13 @@ function changeNumLanes(el) {
     openSatellitePanel()
 }
 
-function deleteSatellite(sat = 1) {
-    let confirmDelete = confirm('Delete ' + mainWindow.satellites[sat].name + ' from the scenario?')
-    if (!confirmDelete) return
-
+function deleteSatellite(button) {
+    if (button.innerText === 'X') {
+        button.innerText = 'C'
+        return
+    }
+    let sat = button.getAttribute('sat')
+    
     mainWindow.relativeData.dataReqs = mainWindow.relativeData.dataReqs.filter(s => s.target !== sat && s.origin !== sat)
     for (let index = 0; index < mainWindow.relativeData.dataReqs.length; index++) {
         let origin = mainWindow.relativeData.dataReqs[index].origin
@@ -9755,7 +9758,7 @@ function openSatellitePanel(nLanes = mainWindow.nLane) {
                         <div style="margin: 10px; font-size: 1.5em;">
                             <label style="font-size: 1.5em;" for="${chosenSat.name}-checkbox"/>${chosenSat.name}</label>
                             <button style="font-size: 1em;" onclick="changeOrigin(${sat})">Center</button>
-                            <button style="font-size: 1em;" tabindex="-1" onclick="deleteSatellite(${sat})">X</button>
+                            <button style="font-size: 1em;" tabindex="-1" sat="${sat}" onclick="deleteSatellite(this)">X</button>
                         </div>
                     ` 
                 }).join('') + '</div>'
@@ -9769,7 +9772,7 @@ function openSatellitePanel(nLanes = mainWindow.nLane) {
             <button onclick="closeQuickWindow()"style="width: 100%; margin-top: 10px">Close</button>
         </div>
     `
-    openQuickWindow(inner)
+    openQuickWindow(inner, styleOptions = {width: '75%', maxHeight: '80vh'})
 }
 
 function satAccessCheckChange(el) {
