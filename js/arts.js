@@ -3142,18 +3142,19 @@ function handleContextClick(button) {
     }
     if (button.id === 'add-site-group') {
         // button.parentElement.innerHTML = ''
-        button.parentElement.innerHTML = Object.keys(sensorGroups).map(group => {
+        button.parentElement.innerHTML = Object.keys(siteGroups).map(group => {
             return `<div class="context-item" group=${group} onclick="handleContextClick(this)" id="add-site-group-submit">${group.toUpperCase()}</div>`
         })
     }
     if (button.id === 'add-site-group-submit') {
         let group = button.getAttribute('group')
-        sensorGroups[group].forEach(sens => {
+        siteGroups[group].forEach((sens,ii) => {
+            if (ii === 0) return
             mainWindow.groundSites.push(new GroundSite({
                 name: sens[0],
                 long: sens[1][1],
                 lat: sens[1][0],
-                color: '#E17D64'
+                color: siteGroups[group][0]
             }))
         })
         document.getElementById('context-menu')?.remove();
@@ -12152,23 +12153,6 @@ function colaAnalysis(sat1 = 0, sat2 = 1, options = {}) {
         if (math.norm(math.subtract(point1, point2)) < distanceLimit) colaEvents++;
     }
     console.log((colaEvents*100/points).toFixed(4)+'%');
-}
-
-let sensorGroups = {
-    ssn: [
-        ['Eglin', [30.57, -86.21]],
-        ['Clear', [64.29, -149.19]],
-        ['Cape Cod', [41.75, -70.54]],
-        ['Thule', [76.57, -68.3]],
-        ['Cavalier', [48.72, -97.9]],
-        ['Beale', [39.14, -121.35]],
-        ['Fylingdales', [54.37, -0.67]],
-        ['Socorro', [33.82, -106.66]],
-        ['Maui', [20.71, -156.26]],
-        ['Diego Garcia', [-7.41, 72.45]],
-        ['Kwajalein', [9.39, 167.48]],
-        ['Millstone', [42.62, -71.49]]
-    ]
 }
 
 function generateStkEphemFile(sat = 0, time = mainWindow.scenarioTime) {
