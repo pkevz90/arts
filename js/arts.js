@@ -1367,6 +1367,11 @@ class windowCanvas {
             // Check if lists thrust and mass
             let thrust = sat.thrust || 10000
             let mass = sat.mass || 1000
+            // Make launch init state correct for launch time if launch object
+            if (sat.appear) {
+                sat.position = propToTimeAnalytic(sat.position, sat.appear)
+                sat.position = PosVel2CoeNew(sat.position.slice(0,3), sat.position.slice(3))
+            }
             this.satellites.push(sat.appear === undefined ?
                 new Satellite({
                     position: sat.position,
@@ -1399,7 +1404,9 @@ class windowCanvas {
                     area: sat.area,
                     name: sat.name,
                     point: sat.point,
-                    team: sat.team
+                    team: sat.team,
+                    launchTime: sat.appear,
+                    finalTime: sat.disappear-sat.appear
                 })
             )
         })
@@ -3260,7 +3267,7 @@ function handleContextClick(button) {
             position,
             launchTime,
             finalTime: tof,
-            name: site+' Launch'
+            name: 'Launch-'+(math.random()*10000).toFixed()
         }))
         document.getElementById('context-menu').remove()
     }
