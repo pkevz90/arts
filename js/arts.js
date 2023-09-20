@@ -4789,31 +4789,48 @@ function parseState(button) {
     if (tleCheck) {
         // parse tle
         try {
-            let date = inputValue.slice(inputValue.search(/\d{5}.\d{4,}/)).split(/ {1,}/)[0]
-            inputValue = inputValue.slice(inputValue.search(/(\n| |\r|\t)2 {1,}\d{5}/)).split(/ {1,}/).filter(s => s.length > 0)
+            inputValue = inputValue.split(/[ |\t|\r]2 \d{5}/)
+            inputValue[1] = '2 00000' + inputValue[1]
+            // console.log(...inputValue);
             
-            let name = inputValue[1]
-            document.querySelectorAll('.sat-style-input')[3].value = name
-            inputValue = {
-                a: Number(inputValue[7]),
-                e: Number('0.'+inputValue[4]),
-                i: Number(inputValue[2])*Math.PI/180,
-                raan: Number(inputValue[3])*Math.PI/180,
-                arg: Number(inputValue[5])*Math.PI/180,
-                tA: Number(inputValue[6])*Math.PI/180,
-            }
-            inputValue.a = 86400 / inputValue.a
-            inputValue.a = (398600.4418*(inputValue.a / 2 / Math.PI)**2)**(1/3)
-            inputValue.tA = solveKeplersEquation(inputValue.tA, inputValue.e)
-            inputValue.tA = Eccentric2True(inputValue.e, inputValue.tA)
-            inputValue = Object.values(Coe2PosVelObject(inputValue))
-            date = new Date('20'+date.slice(0,2), 0, date.slice(2,5), 0,0,72+86400*Number(date.slice(5)))
+            let state = runSgp4(...inputValue)
             eciValues = {
-                date, state: inputValue
+                date: state[0],
+                state: state.slice(1)
             }
-        } catch (error) {
-            return showScreenAlert('Input not valid as a J2000 or TLE')
+            console.log(eciValues);
         }
+        catch (e) {
+
+        }
+        if(eciValues === undefined) {
+            try {
+                console.log(inputValue);
+                let date = inputValue.slice(inputValue.search(/\d{5}.\d{4,}/)).split(/ {1,}/)[0]
+                inputValue = inputValue.slice(inputValue.search(/(\n| |\r|\t)2 {1,}\d{5}/)).split(/ {1,}/).filter(s => s.length > 0)
+                
+                let name = inputValue[1]
+                document.querySelectorAll('.sat-style-input')[3].value = name
+                inputValue = {
+                    a: Number(inputValue[7]),
+                    e: Number('0.'+inputValue[4]),
+                    i: Number(inputValue[2])*Math.PI/180,
+                    raan: Number(inputValue[3])*Math.PI/180,
+                    arg: Number(inputValue[5])*Math.PI/180,
+                    tA: Number(inputValue[6])*Math.PI/180,
+                }
+                inputValue.a = 86400 / inputValue.a
+                inputValue.a = (398600.4418*(inputValue.a / 2 / Math.PI)**2)**(1/3)
+                inputValue.tA = solveKeplersEquation(inputValue.tA, inputValue.e)
+                inputValue.tA = Eccentric2True(inputValue.e, inputValue.tA)
+                inputValue = Object.values(Coe2PosVelObject(inputValue))
+                date = new Date('20'+date.slice(0,2), 0, date.slice(2,5), 0,0,72+86400*Number(date.slice(5)))
+                eciValues = eciValues
+            } catch (error) {
+                return showScreenAlert('Input not valid as a J2000 or TLE')
+            }
+        }
+        
     }
     else {
         eciValues = checkJ200StringValid(inputValue)
@@ -8080,25 +8097,19 @@ function handleTleFile(file) {
         // if (file[index].search(/\b\d{5}[A-Z]\b/) !== -1) {
         if (file[index].search(/1\s\d{5}[\sU]/) !== -1) {
             // Get tle data
-            let line2 = file[index+1].split(/\s+/)
-            let epoch = file[index].match(/\d{5}.\d{8}/)[0]
+            let line1 = file[index]
+            let line2 = file[index+1]
             let threeLEname
             if (index !== 0) {
                 if (file[index-1][0] !== '2') {
                     threeLEname = file[index-1][0] === '0' ? file[index-1].slice(2) : file[index-1]
                 }
             }
+            let tle = new TLE(line1, line2)
             let sat = {
-                epoch: new Date(`20` + epoch.slice(0,2),0,epoch.slice(2,5),0,0,Number(epoch.slice(5))*86400+72),
-                name: line2[1],
-                orbit: {
-                    a: (((86400 / Number(line2[7])) / 2 / Math.PI) ** 2 * 398600.4418) ** (1/3),
-                    e: Number('0.' + line2[4]),
-                    i: Number(line2[2]) * Math.PI / 180,
-                    raan: Number(line2[3]) * Math.PI / 180,
-                    arg: Number(line2[5]) * Math.PI / 180,
-                    tA: Number(line2[6]) * Math.PI / 180
-                }
+                epoch: tle.epoch,
+                line1, line2,
+                name: tle.objectID,
             }
             outNames[sat.name] = outNames[sat.name] === undefined ? threeLEname : outNames[sat.name]
             // console.log(sat);
@@ -10310,6 +10321,7 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         let els = el.parentElement.parentElement.querySelectorAll('.tle-sat-div')
         let radioInputs = [...el.parentElement.parentElement.querySelector('#import-type-choice-div').querySelectorAll('input')].filter(s => s.checked)[0].id
         let resetScenario = radioInputs === 'import-tles-new'
+        let importTime = new Date(el.parentElement.parentElement.querySelector('#tle-import-time').value)
         for (let index = 0; index < els.length; index++) {
             let name = els[index].querySelector('.sat-name-span').innerText
             let tleOptions = els[index].querySelectorAll('.tle-option-div')
@@ -10317,19 +10329,16 @@ function openTleWindow(tleSatellites, tleNames = {}) {
             let option = tleOptions.find(opt => {
                 return opt.querySelector('input').checked
             })
-            let state = option.getAttribute('orbit').split('x').map(s => Number(s))
-            let epoch = new Date(option.querySelector('.tle-epoch').innerText)
+            let line1 = option.getAttribute('line1')
+            let line2 = option.getAttribute('line2')
+            let tle = new TLE(line1, line2)
+            console.log(tle);
+            console.log(tle.epoch, importTime);
+            let rv = tle.getRVForDate(importTime)
             states.push({
                 name, 
-                orbit: {
-                    a: state[0],
-                    e: state[1],
-                    i: state[2],
-                    raan: state[3],
-                    arg: state[4],
-                    tA: Eccentric2True(state[1], solveKeplersEquation(state[5], state[1]))
-                }, 
-                epoch
+                orbit: astro.j20002Coe([...rv[0], ...rv[1]]), 
+                epoch: importTime
             })
         }
         let importCheckboxes = [...tleWindow.document.querySelectorAll('.import-checkbox')].map(s => s.checked)
@@ -10352,7 +10361,6 @@ function openTleWindow(tleSatellites, tleNames = {}) {
             if (mainWindow.satellites.filter(sat => importName.match(sat.name) !== null).length > 0) return false
             return check
         })
-        let importTime = new Date(el.parentElement.parentElement.querySelector('#tle-import-time').value)
         console.log(importCheckboxes);
         states = states.filter((s, filterIi) => importCheckboxes[filterIi])
         importNames = importNames.filter((s, filterIi) => importCheckboxes[filterIi])
@@ -10515,17 +10523,13 @@ function openTleWindow(tleSatellites, tleNames = {}) {
                 </select>
             </div>`
             tleSatellites.filter(sat => sat.name === satName).sort((a,b)=>a.epoch-b.epoch).forEach((matchSat, ii, arr) => {
-                outHt += `<div class="tle-option-div" orbit="${Object.values(matchSat.orbit).join('x')}"style="margin-left: 20px"><input ${ii === 0 ? 'checked' : ''} name="${matchSat.name}-tle-radio" type="radio"/><span class="tle-epoch">${toStkFormat(matchSat.epoch.toString())}</span></div>`
-                let eciOrbit = Object.values(Coe2PosVelObject(matchSat.orbit))
-                let latLongOrbit = astro.eci2latlong(eciOrbit.slice(0,3), matchSat.epoch)
-                outHt += `<div style="font-size: 0.75em; margin-left: 30px">Lat: ${(latLongOrbit.lat*180/Math.PI).toFixed(1)} deg, Long: ${(latLongOrbit.long*180/Math.PI).toFixed(1)} deg, SMA: ${matchSat.orbit.a.toFixed(1)} km</div>`
+                outHt += `<div class="tle-option-div" line1="${matchSat.line1}" line2="${matchSat.line2}" style="margin-left: 20px"><input ${ii === 0 ? 'checked' : ''} name="${matchSat.name}-tle-radio" type="radio"/><span class="tle-epoch">${toStkFormat(matchSat.epoch.toString())}</span></div>`
             })
             outHt += '</div>'
             return outHt
         }).join('')}
         </div>
         <div><button onclick="importTleChoices(this)">Import TLE States</button></div>
-        <div><button onclick="importTlesAsViewer(this)">Import TLE States As Viewer</button></div>
     `
 }
 let j2000Window
@@ -12178,34 +12182,10 @@ EphemerisTimePosVel
     downloadFile(mainWindow.satellites[sat].name.replace(/ {1,}/,'_') + '.e', head + '\n' + satInertial + '\n\n' + 'END Ephemeris');
 }
 
-// function createSideMenu() {
-//     let sideDiv = document.createElement('div')
-//     sideDiv.style.display = 'flex'
-//     sideDiv.style.flexDirection = 'column'
-//     sideDiv.style.justifyContent = 'space-around'
-//     sideDiv.style.padding = '0 5px'
-//     sideDiv.style.position = 'fixed'
-//     sideDiv.style.right = '0vw'
-//     sideDiv.style.height = '80vh'
-//     sideDiv.style.top = '10vh'
-//     sideDiv.style.backgroundColor = '#111155'
-//     sideDiv.innerHTML = `
-//         <div style="width: 5vh; height: 5vh; border: 1px solid black"><canvas title="3D View" id="threeD-cnvs-button" style="height: 100%; width: 100%;"></canvas></div>
-//         <div style="width: 5vh; height: 5vh; border: 1px solid black"><canvas id="site-access-cnvs-button" style="height: 100%; width: 100%;"></canvas></div>
-//         <div style="width: 5vh; height: 5vh; border: 1px solid black"><canvas id="sat-cnvs-button" style="height: 100%; width: 100%;"></canvas></div>
-//     `
-//     document.body.append(sideDiv)
-//     let cnvs = document.querySelector('#threeD-cnvs-button')
-//     let ctx = cnvs.getContext('2d')
-//     cnvs.height = cnvs.clientHeight
-//     cnvs.width = cnvs.clientWidth
-//     ctx.strokeStyle = 'white'
-//     ctx.beginPath()
-//     ctx.moveTo(cnvs.width*0.9, cnvs.height*0.9)
-//     ctx.lineTo(cnvs.width*0.5, cnvs.height*0.5)
-//     ctx.lineTo(cnvs.width*0.8, cnvs.height*0.1)
-//     ctx.moveTo(cnvs.width*0.5, cnvs.height*0.5)
-//     ctx.lineTo(cnvs.width*0.1, cnvs.height*0.6)
-//     ctx.stroke()
-// }
-// createSideMenu()
+function runSgp4(line1 = '1 57861U 23142A   23261.56716943  .00007592  00000-0  34037-3 0  9997', line2 = '2 57861  97.3190  88.2709 0040358 226.8552 132.9307 15.20757640   532') {
+    let tle = new TLE(line1, line2)
+    console.log(tle, tle.getRV(0));
+    let rv = tle.getRV(0);
+    rv = [tle.epoch, ...rv[0], ...rv[1]]
+    return rv
+}
