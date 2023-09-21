@@ -551,6 +551,54 @@ class astro {
         }
         return a
     }
+    static dateToTT(d = new Date()) {
+        d = new Date(d - (-69*1000))
+        d = astro.julianDate(d.getFullYear(), d.getMonth()+1, d.getHours(), d.getMinutes(), d.getSeconds())
+        d = (d - 2451454)/36525
+        return d
+    }
+    static teme2eci(rteme = [42164,0,0], vteme = [0,3.0140,0], date= new Date(), ddpsi, ddeps) {
+        date = new Date(date - (-69*1000))
+        date = astro.julianDate(date.getFullYear(), date.getMonth()+1, date.getHours(), date.getMinutes(), date.getSeconds()+date.getMilliseconds())
+        let ttt = (date - 2451454)/36525
+        let prec= astro.precess(ttt, '80')
+        // let {deltapsi, trueeps, meaneps, omega, nut} = astro.nutation(ttt, ddpsi, ddeps)
+        // let eqeg =deltapsi * Math.cos(meaneps)
+        // let eqe = [[Math.cos(eqeg), Math.sin(eqeg), 0],
+        //            [-Math.sin(eqeg), Math.cos(eqeg), 0],
+        //             [0,0,1]]
+        let tm = prec// math.multiply(prec, nut, math.transpose(eqe))
+        // console.log(prec);
+        return [...math.multiply(tm, rteme), ...math.multiply(tm, vteme)]
+    }
+    static precess(ttt) {
+        let convrt = Math.PI / 180/3600
+        let ttt2 = ttt**2
+        let ttt3 = ttt**3
+        let psia = 5038.7784*ttt - 1.07259*ttt2 - 0.001147*ttt3
+        let wa = 84381.448 + 0.05124*ttt2 - 0.007726*ttt3
+        let ea = 84381.448 - 46.815*ttt - 0.00059*ttt2 + 0.001813*ttt3
+        let xa = 10.5526*ttt - 2.38064*ttt2 - 0.001125*ttt3
+        let zeta = 2306.2181*ttt + 0.30188*ttt2 + 0.017998*ttt3
+        let theta = 2004.3109*ttt - 0.42665*ttt2 - 0.041833*ttt3
+        let z = 2306.2181*ttt + 1.09468*ttt2 + 0.018203*ttt3
+        psia *= convrt
+        wa *= convrt
+        ea *= convrt
+        xa *= convrt
+        zeta *= convrt
+        theta *= convrt
+        z *= convrt
+        let cosZeta = Math.cos(zeta)
+        let sinZeta = Math.sin(zeta)
+        let sinTheta = Math.sin(theta)
+        let cosTheta = Math.cos(theta)
+        let sinZ = Math.sin(z)
+        let cosZ = Math.cos(z)
+        return [[cosZeta*cosTheta*cosZ-sinZeta*sinZ, cosZeta*cosTheta*sinZ+sinZeta*cosZ, cosZeta*sinTheta],
+                    [-sinZeta*cosTheta*cosZ-cosZeta*sinZ, -sinZeta*cosTheta*sinZ+cosZeta*cosZ, -sinZeta*sinTheta],
+                    [-sinTheta*cosZ, -sinTheta*sinZ, cosTheta]]
+    }
 }
 
 class Propagator {

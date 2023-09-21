@@ -4794,12 +4794,12 @@ function parseState(button) {
             // console.log(...inputValue);
             let state = runSgp4(...inputValue)
             // Accounting for difference in TEME time
-            let position = [...math.multiply(astro.rot(0.3, 3), state.slice(1,4)),...math.multiply(astro.rot(0.3, 3), state.slice(4))]
+            console.log(state);
             eciValues = {
                 date: state[0],
-                state: position
+                state: astro.teme2eci(state.slice(1,4), state.slice(4), state[0])//position
             }
-            console.log(eciValues);
+            console.log(eciValues.state);
         }
         catch (e) {
 
@@ -10336,7 +10336,8 @@ function openTleWindow(tleSatellites, tleNames = {}) {
             console.log(tle);
             console.log(tle.epoch, importTime);
             let rv = tle.getRVForDate(importTime)
-            rv = [...math.multiply(astro.rot(0.3, 3), rv[0]), ...math.multiply(astro.rot(0.3, 3), rv[1])]
+            // rv = [...math.multiply(astro.rot(0.3, 3), rv[0]), ...math.multiply(astro.rot(0.3, 3), rv[1])]
+            rv = astro.teme2eci(rv[0], rv[1], importTime)
             states.push({
                 name, 
                 orbit: astro.j20002Coe(rv), 
