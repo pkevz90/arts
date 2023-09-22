@@ -8132,7 +8132,7 @@ function handleTleFile(file) {
 }
 
 function importStates(states, time,  options = {}) {
-    let {colors, shapes, names, origin = 0, resetScenario = true} = options
+    let {colors, shapes, names, origin = 0, resetScenario = true, scenarioLength} = options
     if (!resetScenario) {
         time = mainWindow.startDate
     }
@@ -8168,10 +8168,10 @@ function importStates(states, time,  options = {}) {
             let originOrbit = h.propToTime(Object.values(Coe2PosVelObject(s.orbit)), s.epoch, (baseEpoch - s.epoch) / 1000).state
             mainWindow.updateOrigin(PosVel2CoeNew(originOrbit.slice(0,3), originOrbit.slice(3,6)), false)
             if (mainWindow.originOrbit.a < 15000) {
-                mainWindow.scenarioLength = ((2 * Math.PI) / mainWindow.mm * 4)/3600
+                mainWindow.scenarioLength = scenarioLength || Math.ceil(((2 * Math.PI) / mainWindow.mm * 4)/3600)
             }
             else {
-                mainWindow.scenarioLength = ((2 * Math.PI) / mainWindow.mm * 2)/3600
+                mainWindow.scenarioLength = scenarioLength || Math.ceil(((2 * Math.PI) / mainWindow.mm * 2)/3600)
             }
             mainWindow.updateOrigin(PosVel2CoeNew(originOrbit.slice(0,3), originOrbit.slice(3,6)), false)
             document.querySelector('#time-slider-range').max = mainWindow.scenarioLength * 3600
@@ -10374,13 +10374,21 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         if (originRadio.filter(s => s).length === 0) {
             originRadio[0] = true
         }
+        let scenarioLength
+        try {
+            scenarioLength = tleWindow.document.querySelector('#tle-import-length').value === '' ? undefined : Number(tleWindow.document.querySelector('#tle-import-length').value)
+            scenarioLength = scenarioLength < 0 ? undefined : scenarioLength
+        } catch (error) {
+            scenarioLength = undefined
+        }
         let origin = originRadio.findIndex(s => s)
         importStates(states, importTime, {
             names: importNames,
             shapes: importShapes,
             colors: importColors,
             origin,
-            resetScenario
+            resetScenario,
+            scenarioLength
         })
     }
     tleWindow.importTlesAsViewer = (el) => {
@@ -10496,6 +10504,7 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         currentUtc = new Date(currentUtc - (-60000*currentUtc.getTimezoneOffset()))
         currentUtc = new Date(currentUtc.getFullYear(), currentUtc.getMonth(), currentUtc.getDate(), currentUtc.getHours(), currentUtc.getMinutes())
         el.parentElement.parentElement.querySelector('#tle-import-time').value = convertTimeToDateTimeInput(currentUtc)
+        tleWindow.changeImportTime(el.parentElement.parentElement.querySelector('#tle-import-time'))
     }
     let uniqueSats = tleSatellites.filter((element, index, array) => array.findIndex(el => el.name === element.name) === index).map(sat => sat.name)
     tleWindow.tleSatellites = tleSatellites
@@ -10505,7 +10514,8 @@ function openTleWindow(tleSatellites, tleNames = {}) {
     tleWindow.document.body.innerHTML = `
         <div style="text-align: center; font-size: 2em; margin-bottom: 10px; width: 100%;">ARTS TLE Import Tool</div>
         <div style="width: 100%; text-align: center;">Import Time <input onchange="changeImportTime(this)" id="tle-import-time" type="datetime-local" value=${defaultEpoch}></div>
-        <div style="width: 100%; text-align: center;"><button onclick="setToCurrentUtc(this)">Set to Current UTC</button></div>
+        <div style="width: 100%; text-align: center; margin: 5px;"><button onclick="setToCurrentUtc(this)">Set to Current UTC</button></div>
+        <div style="width: 100%; text-align: center; margin: 5px;">Scenario Length <input style="width: 10ch;" type="number" id="tle-import-length" placeholder="default"> hrs</div>
         <div id="import-type-choice-div" style="margin: 10px;"><label for="import-tles-new">Import as new Scenario</label><input checked type="radio" id="import-tles-new" name="tle-import-option"/><label style="margin-left: 20px;" for="import-tles-existing" title="Only import TLE states that do not exist in the scenario currently">Import Added into Existing Scenario</label><input id="import-tles-existing" type="radio" name="tle-import-option"/></div>
         <div class="no-scroll" style="max-height: 85%; overflow-y: scroll">
         ${uniqueSats.map((satName, satIi) => {
