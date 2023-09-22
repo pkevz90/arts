@@ -2493,11 +2493,16 @@ class TLE
         this.nddot = Number('.'+this.nddot[0]+'e'+(pos ? '+' : '-')+this.nddot[1])
         
         this.bstar = line1split[6].split(/[\+|-]/);
+        // this.bstar = line1split[6].split(/[^-][\+|-]/);
+        console.log(this.bstar);
         pos = line1split[6].search('-') === -1
         if (this.bstar.length === 3) {
-            this.bstar = [-1*this.bstar[1], this.bstar[2]]
+            this.bstar = -1*Number('.' + this.bstar[1]+'e'+(pos ? '+' : '-')+this.bstar[2])
         }
-        this.bstar = Number('.'+this.bstar[0]+'e'+(pos ? '+' : '-')+this.bstar[1])
+        else {
+            this.bstar = Number('.'+this.bstar[0]+'e'+(pos ? '+' : '-')+this.bstar[1])
+        }
+        console.log(this.bstar);
         
         
         this.incDeg =  Number(line2split[2])

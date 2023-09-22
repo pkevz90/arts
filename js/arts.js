@@ -10491,7 +10491,12 @@ function openTleWindow(tleSatellites, tleNames = {}) {
             }
         })
     }
-    
+    tleWindow.setToCurrentUtc = (el) => {
+        let currentUtc = new Date()
+        currentUtc = new Date(currentUtc - (-60000*currentUtc.getTimezoneOffset()))
+        currentUtc = new Date(currentUtc.getFullYear(), currentUtc.getMonth(), currentUtc.getDate(), currentUtc.getHours(), currentUtc.getMinutes())
+        el.parentElement.parentElement.querySelector('#tle-import-time').value = convertTimeToDateTimeInput(currentUtc)
+    }
     let uniqueSats = tleSatellites.filter((element, index, array) => array.findIndex(el => el.name === element.name) === index).map(sat => sat.name)
     tleWindow.tleSatellites = tleSatellites
     let importEpoch = tleSatellites[0].epoch
@@ -10500,6 +10505,7 @@ function openTleWindow(tleSatellites, tleNames = {}) {
     tleWindow.document.body.innerHTML = `
         <div style="text-align: center; font-size: 2em; margin-bottom: 10px; width: 100%;">ARTS TLE Import Tool</div>
         <div style="width: 100%; text-align: center;">Import Time <input onchange="changeImportTime(this)" id="tle-import-time" type="datetime-local" value=${defaultEpoch}></div>
+        <div style="width: 100%; text-align: center;"><button onclick="setToCurrentUtc(this)">Set to Current UTC</button></div>
         <div id="import-type-choice-div" style="margin: 10px;"><label for="import-tles-new">Import as new Scenario</label><input checked type="radio" id="import-tles-new" name="tle-import-option"/><label style="margin-left: 20px;" for="import-tles-existing" title="Only import TLE states that do not exist in the scenario currently">Import Added into Existing Scenario</label><input id="import-tles-existing" type="radio" name="tle-import-option"/></div>
         <div class="no-scroll" style="max-height: 85%; overflow-y: scroll">
         ${uniqueSats.map((satName, satIi) => {
