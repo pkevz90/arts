@@ -3039,6 +3039,7 @@ function handleContextClick(button) {
             <div class="context-item" onclick="handleContextClick(this)" id="waypoint-maneuver">Waypoint</div>
             <div class="context-item" onclick="handleContextClick(this)" id="direction-maneuver">Direction</div>
             <div class="context-item" onclick="handleContextClick(this)" id="az-el-maneuver">Az El Mag</div>
+            <div class="context-item" onclick="handleContextClick(this)" id="ra-dec-maneuver">RA Dec Mag</div>
             <div class="context-item" onclick="handleContextClick(this)" id="dsk-maneuver">DSK</div>
             <div class="context-item" onclick="handleContextClick(this)" id="drift-maneuver">Set Drift Rate</div>
             <div class="context-item" onclick="handleContextClick(this)" id="perch-maneuver">Perch</div>
@@ -3910,6 +3911,15 @@ function handleContextClick(button) {
         `
         document.getElementsByClassName('context-item')[0].getElementsByTagName('input')[0].focus();
     }
+    else if (button.id === 'ra-dec-maneuver') {
+        button.parentElement.innerHTML = `
+            <div class="context-item" >RA <input placeholder="0" type="Number" style="width: 3em; font-size: 1em"> deg</div>
+            <div class="context-item" >Dec <input placeholder="0" type="Number" style="width: 3em; font-size: 1em"> deg</div>
+            <div class="context-item" >Mag<input placeholder="0" type="Number" style="width: 3em; font-size: 1em"> m/s</div>
+            <div class="context-item" onkeydown="handleContextClick(this)" onclick="handleContextClick(this)" id="execute-ra-dec" tabindex="0">Execute</div>
+        `
+        document.getElementsByClassName('context-item')[0].getElementsByTagName('input')[0].focus();
+    }
     else if (button.id === 'execute-change-burn') {
         let sat = button.getAttribute('sat')
         let burn = button.getAttribute('burn')
@@ -4042,6 +4052,26 @@ function handleContextClick(button) {
             ].map(s => s/1000)
         }
         insertDirectionBurn(sat, mainWindow.scenarioTime, dir)
+        document.getElementById('context-menu')?.remove();
+    }
+    else if (button.id === 'execute-ra-dec') {
+        let inputs = button.parentElement.getElementsByTagName('input');
+        for (let ii = 0; ii < inputs.length; ii++) {
+            if (inputs[ii].value === '') {
+                inputs[ii].value = inputs[ii].placeholder;
+            }
+        }
+        inputs = [...inputs].map(s => Number(s.value))
+        let sat = button.parentElement.sat;
+        let eciDir = [Math.cos(inputs[0]*Math.PI/180)*Math.cos(inputs[1]*Math.PI/180),
+                      Math.sin(inputs[0]*Math.PI/180)*Math.cos(inputs[1]*Math.PI/180),
+                      Math.sin(inputs[1]*Math.PI/180)]
+        let currentState = Object.values(getCurrentInertial(sat))
+        let c = Eci2Ric(currentState.slice(0,3), currentState.slice(3),[0,0,0], [0,0,0], true)
+        let ricDir = math.multiply(c, eciDir)
+    
+        
+        insertDirectionBurn(sat, mainWindow.scenarioTime, ricDir.map(s => s*inputs[2]/1000))
         document.getElementById('context-menu')?.remove();
     }
     else if (button.id === 'execute-dsk') {
