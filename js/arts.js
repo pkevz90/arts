@@ -4666,10 +4666,33 @@ function changeSatelliteInputType(el) {
             satInputs[6].innerHTML = ``
             
             break
+            
+        case 'tle-sat-input':
+            date = lastInputDate
+            satInputs[0].innerHTML = mainWindow.satellites.length === 0 ? `Epoch <input class="sat-input" style="width: 20ch; font-size: 1.25em;" type="datetime-local" id="start-time" name="meeting-time" value="${date}"><button style="margin: 5px; padding: 3px 10px;" onclick="setCurrentToDateArea(this)">Set Current</button>` : '<em>TLE will propagate to current scenario start time</em>'
+            satInputs[1].innerHTML = `<textarea id="story" name="story" rows="2" cols="70">`
+            satInputs[2].innerHTML = ``
+            satInputs[3].innerHTML = ``
+            satInputs[4].innerHTML = ``
+            satInputs[5].innerHTML = ``
+            satInputs[6].innerHTML = ``
+            
+            break
     }
     document.getElementById(el.id).checked = true
-    document.querySelectorAll('.sat-input[type="number"]')[0].focus()
+    try {
+        document.querySelectorAll('.sat-input[type="number"]')[0].focus()
+    } catch (error) {
+        document.querySelectorAll('textArea')[0].focus()
+    }
     return el.id
+}
+
+function setCurrentToDateArea(el) {
+    let currentUtc = new Date()
+    currentUtc = new Date(currentUtc - (-60000*currentUtc.getTimezoneOffset()))
+    currentUtc = new Date(currentUtc.getFullYear(), currentUtc.getMonth(), currentUtc.getDate(), currentUtc.getHours(), currentUtc.getMinutes())
+    el.parentElement.querySelector('input').value = convertTimeToDateTimeInput(currentUtc)
 }
 
 function checkJ200StringValid(string) {
@@ -5571,7 +5594,8 @@ function initStateFunction(el) {
     else if (el.id === 'add-satellite-button') {
         let inputs = [...document.querySelectorAll('.sat-input')]
         let radioId = [...document.getElementsByName('sat-input-radio')].filter(s => s.checked)[0].id
-        let eciState, ricState, argLat, eciOrigin, startDate, relOrigin, date, dt, coeState, long, driftRate, inclination, eccentricity
+        let styleInputs = document.querySelectorAll('.sat-style-input')
+        let eciState, ricState, argLat, eciOrigin, startDate, relOrigin, date, dt, coeState, long, driftRate, inclination, eccentricity, line1, line2
         switch (radioId) {
             case 'ric-sat-input':
                 relOrigin = Number(document.querySelector('#sat-input-origin').value)
@@ -5668,6 +5692,27 @@ function initStateFunction(el) {
                 console.log(date, long, driftRate, inclination);
                 eciState = Object.values(Coe2PosVelObject(geoSatelliteAtLongitude(long, date, inclination, driftRate, eccentricity, argLat)))
                 break
+            case 'tle-sat-input':
+                date = mainWindow.startDate
+                if (mainWindow.satellites.length === 0) {
+                    date = new Date(inputs[0].value)
+                    mainWindow.startDate = date
+                }
+                let textAreaValue = document.querySelectorAll('textarea')[0].value.split('\n')
+                if (textAreaValue.length < 2) return
+                let tleValue
+                try {
+                    tleValue = new TLE(textAreaValue[0], textAreaValue[1])
+                } catch (error) {
+                    return showScreenAlert('Not a valid TLE')
+                }
+                styleInputs[3].value = tleValue.objectID
+                tleValue = tleValue.getRVForDate(date)
+                tleValue = [...tleValue[0], ...tleValue[1]]
+                tleValue = astro.teme2eci(tleValue.slice(0,3), tleValue.slice(3), date)
+                eciState = tleValue
+                break
+            
         }
         let position = PosVel2CoeNew(eciState.slice(0,3), eciState.slice(3,6))
         if (mainWindow.satellites.length === 0) {
@@ -5677,7 +5722,6 @@ function initStateFunction(el) {
             mainWindow.updateOrigin(position, true, true)
             showScreenAlert('RIC frame centered on initial satellite')
         }
-        let styleInputs = document.querySelectorAll('.sat-style-input')
         mainWindow.satellites.push(new Satellite({
             position,
             shape: styleInputs[0].value,
@@ -5837,6 +5881,21 @@ function editSatellite(button) {
             eccentricity = eccentricity > 0.9 ? 0.9 : eccentricity
             eccentricity = eccentricity < 0 ? 0 : eccentricity
             eciState = Object.values(Coe2PosVelObject(geoSatelliteAtLongitude(long, mainWindow.startDate, inclination, driftRate, eccentricity, argLat)))
+            break
+        case 'tle-sat-input':
+            date = mainWindow.startDate
+            let textAreaValue = document.querySelectorAll('textarea')[0].value.split('\n')
+            if (textAreaValue.length < 2) return
+            let tleValue
+            try {
+                tleValue = new TLE(textAreaValue[0], textAreaValue[1])
+            } catch (error) {
+                return showScreenAlert('Not a valid TLE')
+            }
+            tleValue = tleValue.getRVForDate(date)
+            tleValue = [...tleValue[0], ...tleValue[1]]
+            tleValue = astro.teme2eci(tleValue.slice(0,3), tleValue.slice(3), date)
+            eciState = tleValue
             break
     }   
     eciState = PosVel2CoeNew(eciState.slice(0,3), eciState.slice(3,6))
