@@ -1,6 +1,6 @@
-let appAcr = 'ROTS 2.9.5'
+let appAcr = 'ROTS 2.9.6'
 let appName = 'Relative Orbital Trajectory System'
-let cao = '11 Sept 2023'
+let cao = '23 Sept 2023'
 document.title = appAcr
 // Various housekeepin to not change html
 document.getElementById('add-satellite-panel').getElementsByTagName('span')[0].classList.add('ctrl-switch');
@@ -5628,15 +5628,18 @@ function initStateFunction(el) {
                 startDate = date
                 eciState = inputs.slice(1,7).map(s => s.value === '' ? Number(s.placeholder) : Number(s.value))
                 
+                
+                dt = (mainWindow.startDate - date) / 1000
+                // If not first satellte, prop to scenario start time
+                let h = new Propagator()
                 if (inputs[0].getAttribute('cov') !== null) {
                     let r = Ric2EciRedux(eciState.slice(0,3), eciState.slice(3))
                     cov = math.diag(inputs[0].getAttribute('cov').split(',').map(s => Number(s)**2).map(s => math.abs(s) < 1e-10 ? 1e-10 : s))
                     cov = math.multiply(r, cov, math.transpose(r))
+                    cov = propEciCovariance(eciState, cov, dt).P
                 }
-                dt = (mainWindow.startDate - date) / 1000
-                // If not first satellte, prop to scenario start time
-                let h = new Propagator()
                 eciState = mainWindow.satellites.length === 0 ? eciState : h.propToTime(eciState, date, dt).state
+                
                 break
             case 'coe-sat-input':
                 date = new Date(inputs[0].value)
@@ -11778,23 +11781,22 @@ function handleImportTextFile(inText) {
 function handleVcmFile(inText) {
     inText = inText.split(/\n{1,}/)
     // Find Epoch Time
-    let epochLine = inText.filter(s => s.search('EPOCH TIME') !== -1)
-    if (epochLine.length === 0) return showScreenAlert('Invalid VCM')
+    let epochLine = inText.filter(s => s.search(/EPOCH TIME/i) !== -1)
+    if (epochLine.length === 0) return showScreenAlert('Invalid VCM: No Epoch Found')
     epochLine = epochLine[0]
     let year = epochLine.match(/\d{4}/)[0]
     let date = epochLine.match(/\d{1,2} [A-Za-z]{3,4}/)[0]
     let time = epochLine.match(/\d{2}:\d{2}:\d{2}\.\d{3}/)
     let epoch = new Date(date + ' ' + year + ' ' + time)
-    if (epoch == 'Invalid Date') return showScreenAlert('Invalid VCM')
+    if (epoch == 'Invalid Date') return showScreenAlert('Invalid VCM: Date Invalid')
     
     let posLine = inText.filter(s => s.search(/POS/i) !== -1)
-    if (posLine.length === 0) return showScreenAlert('Invalid VCM')
+    if (posLine.length === 0) return showScreenAlert('Invalid VCM: Not Position Found')
     posLine = posLine[0]
     let pos = posLine.match(/[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}/)[0]
     pos = pos.trim().split(/ {1,}/).map(s => Number(s))
     let velLine = inText.filter(s => s.search(/VEL/i) !== -1)
-    console.log(velLine);
-    if (velLine.length === 0) return showScreenAlert('Invalid VCM')
+    if (velLine.length === 0) return showScreenAlert('Invalid VCM: No Velocity Found')
     velLine = velLine[0]
     let vel = velLine.match(/[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}/)[0]
     vel = vel.trim().split(/ {1,}/).map(s => Number(s))
@@ -11804,7 +11806,6 @@ function handleVcmFile(inText) {
         return line.match(/[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}/)[0].trim().split(/ {1,}/).map(s => Number(s))
     })
     covLine = covLine.join(',')
-    console.log(covLine);
     openPanel({
         id: 'add-satellite'
     })
@@ -11813,7 +11814,9 @@ function handleVcmFile(inText) {
     })
 
     let inputs = document.querySelectorAll('.sat-input')
-    inputs[0].setAttribute('cov', covLine)
+    if (covLine.length > 0) {
+        inputs[0].setAttribute('cov', covLine)
+    }
     inputs[0].value = convertTimeToDateTimeInput(epoch)
     chosenState.forEach((s, stateii) => {
         inputs[stateii+1].value = s.toFixed(6)
