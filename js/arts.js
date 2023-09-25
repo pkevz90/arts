@@ -2919,6 +2919,7 @@ function startContextClick(event) {
         `
         if (mainWindow.ephemViewerMode) {
             newInnerHTML += `
+                <div class="context-item" onclick="handleContextClick(this)" id="direction-maneuver">Insert Direction Burn</div>
                 <div class="context-item" onclick="handleContextClick(this)" id="prop-options">Propagate To</div>
                 ${mainWindow.satellites.length > 1 ? '<div class="context-item" onclick="handleContextClick(this)" id="display-data-1">Display Data</div>' : ''}
             `
@@ -2975,6 +2976,8 @@ function startContextClick(event) {
         `
             ${mainWindow.hpop ? '' : `<div class="context-item" onclick="handleContextClick(this)" id="exit-ephem-viewer">Seed Planning Scenario</div>`}
             ${mainWindow.satellites.length > 1 ? `<div class="context-item" onclick="openSatellitePanel()">Open Satellite Panel</div>` : ''}
+            ${mainWindow.latLongMode ? `<div class="context-item" onclick="openSensorAccessPanel()">Open Access Panel</div>` : ``}
+            ${mainWindow.latLongMode ? `<div class="context-item" onclick="handleContextClick(this)" id="add-site-group">Add Site Group</div>` : ``}
             ${mainWindow.latLongMode ? `<div lat="${latLongClick.lat}" long="${latLongClick.long}" class="context-item" id="add-ground-site" onclick="handleContextClick(this)">Add Ground Site</div>` : ''}
             <div class="context-item" onclick="openPanel(this)" id="options">Options Menu</div>
             <div class="context-item" onclick="handleContextClick(this)" id="exit-ephem-viewer">Exit ${mainWindow.hpop ? 'HPOP ' : ''}Ephemeris View</div>
@@ -4427,8 +4430,13 @@ document.getElementById('main-plot').addEventListener('pointerdown', event => {
             oldBurns: JSON.parse(JSON.stringify(mainWindow.satellites[mainWindow.currentTarget.sat].burns))
         })
         if (event.ctrlKey) {
+            
             mainWindow.satellites[mainWindow.currentTarget.sat].burns.splice(check[mainWindow.currentTarget.frame], 1);
             mainWindow.satellites[mainWindow.currentTarget.sat].genBurns();
+            if (mainWindow.hpop) {
+                displayHpopTraj(true)
+                return
+            }
             return;
         }
         let burnType = mainWindow.originOrbit.a < 5000 ? 'manual' : mainWindow.burnType
@@ -5595,7 +5603,7 @@ function initStateFunction(el) {
         let inputs = [...document.querySelectorAll('.sat-input')]
         let radioId = [...document.getElementsByName('sat-input-radio')].filter(s => s.checked)[0].id
         let styleInputs = document.querySelectorAll('.sat-style-input')
-        let eciState, ricState, argLat, eciOrigin, startDate, relOrigin, date, dt, coeState, long, driftRate, inclination, eccentricity, line1, line2
+        let eciState, cov, ricState, argLat, eciOrigin, startDate, relOrigin, date, dt, coeState, long, driftRate, inclination, eccentricity, line1, line2
         switch (radioId) {
             case 'ric-sat-input':
                 relOrigin = Number(document.querySelector('#sat-input-origin').value)
@@ -5619,6 +5627,12 @@ function initStateFunction(el) {
                 }
                 startDate = date
                 eciState = inputs.slice(1,7).map(s => s.value === '' ? Number(s.placeholder) : Number(s.value))
+                
+                if (inputs[0].getAttribute('cov') !== null) {
+                    let r = Ric2EciRedux(eciState.slice(0,3), eciState.slice(3))
+                    cov = math.diag(inputs[0].getAttribute('cov').split(',').map(s => Number(s)**2).map(s => math.abs(s) < 1e-10 ? 1e-10 : s))
+                    cov = math.multiply(r, cov, math.transpose(r))
+                }
                 dt = (mainWindow.startDate - date) / 1000
                 // If not first satellte, prop to scenario start time
                 let h = new Propagator()
@@ -5729,6 +5743,11 @@ function initStateFunction(el) {
             color: styleInputs[2].value,
             name: styleInputs[3].value === '' ? 'Sat' + (mainWindow.satellites.length + 1) : styleInputs[3].value
         }))
+        if (cov !== undefined) {
+            mainWindow.satellites[mainWindow.satellites.length-1].cov = cov
+            mainWindow.satellites[mainWindow.satellites.length-1].curCov = cov
+            mainWindow.satellites[mainWindow.satellites.length-1].covTime = 0
+        }
         document.title = mainWindow.satellites.map(sat => sat.name).join(' / ');
         updateWhiteCellWindow()
         closeAll();
@@ -7261,9 +7280,14 @@ function insertDirectionBurn(sat = 0, time = 3600, dir = [0.001, 0, 0]) {
         location: position.slice(0,3),
         waypoint: false
     })
+    
+    if (mainWindow.hpop) {
+        displayHpopTraj(true)
+        mainWindow.changeTime(time + 3600)
+        return
+    }
     mainWindow.satellites[sat].calcTraj(true)
-    mainWindow.desired.scenarioTime = time + 3600;
-    document.querySelector('#time-slider-range').value = mainWindow.desired.scenarioTime
+    mainWindow.changeTime(time + 3600)
     updateWhiteCellWindow()
 }
 
@@ -8103,8 +8127,9 @@ function uploadTles(event) {
 
 function tellInputStateFileType(file) {
     // Tells if file is J2000 or TLE file
-    let vcmregexp = /\d{1,}\.\d{1,}|\d{1,2} [a-zA-Z]{3,4} \d{4} \d{2}:\d{2}:\d{2}/gm
-    if (file.search(/ -?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d*/m) !== -1) return 'j2000'
+    let vcmregexp = file.search('POS') !== -1 && file.search('VEL') !== -1 && file.search('COV') !== -1 
+    if (vcmregexp) return 'vcm'
+    else if (file.search(/ -?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d*/m) !== -1) return 'j2000'
     else if (file.search(/^1 {1,}\d*.* {1,}\d{5}\./m) !== -1 && file.search(/^2 {1,}\d*/m) !== -1) {
         console.log('tle');
         // Assume file is TLE
@@ -11737,6 +11762,7 @@ function handleImportTextFile(inText) {
     if (objectFromText === undefined) {
         let fileType = tellInputStateFileType(inText)
         console.log(fileType);
+        if (fileType === 'cvm') return handleVcmFile(inText)
         if (fileType === 'j2000') return handleStkJ200File(inText)
         if (fileType === 'ecilist') return handleEciList(inText)
         if (fileType === 'ephem') return handleEphemFile(inText)
@@ -11750,7 +11776,48 @@ function handleImportTextFile(inText) {
 }
 
 function handleVcmFile(inText) {
+    inText = inText.split(/\n{1,}/)
+    // Find Epoch Time
+    let epochLine = inText.filter(s => s.search('EPOCH TIME') !== -1)
+    if (epochLine.length === 0) return showScreenAlert('Invalid VCM')
+    epochLine = epochLine[0]
+    let year = epochLine.match(/\d{4}/)[0]
+    let date = epochLine.match(/\d{1,2} [A-Za-z]{3,4}/)[0]
+    let time = epochLine.match(/\d{2}:\d{2}:\d{2}\.\d{3}/)
+    let epoch = new Date(date + ' ' + year + ' ' + time)
+    if (epoch == 'Invalid Date') return showScreenAlert('Invalid VCM')
     
+    let posLine = inText.filter(s => s.search(/POS/i) !== -1)
+    if (posLine.length === 0) return showScreenAlert('Invalid VCM')
+    posLine = posLine[0]
+    let pos = posLine.match(/[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}/)[0]
+    pos = pos.trim().split(/ {1,}/).map(s => Number(s))
+    let velLine = inText.filter(s => s.search(/VEL/i) !== -1)
+    console.log(velLine);
+    if (velLine.length === 0) return showScreenAlert('Invalid VCM')
+    velLine = velLine[0]
+    let vel = velLine.match(/[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}/)[0]
+    vel = vel.trim().split(/ {1,}/).map(s => Number(s))
+    let chosenState = [...pos, ...vel]
+    let covLine = inText.filter(s => s.search(/sigma/i) !== -1)
+    covLine = covLine.map(line => {
+        return line.match(/[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}/)[0].trim().split(/ {1,}/).map(s => Number(s))
+    })
+    covLine = covLine.join(',')
+    console.log(covLine);
+    openPanel({
+        id: 'add-satellite'
+    })
+    changeSatelliteInputType({
+        id: 'eci-sat-input'
+    })
+
+    let inputs = document.querySelectorAll('.sat-input')
+    inputs[0].setAttribute('cov', covLine)
+    inputs[0].value = convertTimeToDateTimeInput(epoch)
+    chosenState.forEach((s, stateii) => {
+        inputs[stateii+1].value = s.toFixed(6)
+    })
 }
 
 function handleEciList(inText) {
