@@ -2309,7 +2309,7 @@ function keydownFunction(key) {
     else if (key.key === 'F' || key.key === 'f') {
         mainWindow.polarPlotMode = !mainWindow.polarPlotMode
     }
-    else if (key.key ==='h' && key.ctrlKey) {
+    else if ((key.key ==='h' || key.key ==='H') && key.ctrlKey) {
         key.preventDefault()
         displayHpopTraj()
     } 
@@ -2974,18 +2974,18 @@ function startContextClick(event) {
     else {
         ctxMenu.innerHTML = mainWindow.ephemViewerMode ? 
         `
-            ${mainWindow.hpop ? '' : `<div class="context-item" onclick="handleContextClick(this)" id="exit-ephem-viewer">Seed Planning Scenario</div>`}
+            <div class="context-item" onclick="handleContextClick(this)" id="exit-ephem-viewer">Seed Planning Scenario</div>
             ${mainWindow.satellites.length > 1 ? `<div class="context-item" onclick="openSatellitePanel()">Open Satellite Panel</div>` : ''}
             ${mainWindow.latLongMode ? `<div class="context-item" onclick="openSensorAccessPanel()">Open Access Panel</div>` : ``}
             ${mainWindow.latLongMode ? `<div class="context-item" onclick="handleContextClick(this)" id="add-site-group">Add Site Group</div>` : ``}
             ${mainWindow.latLongMode ? `<div lat="${latLongClick.lat}" long="${latLongClick.long}" class="context-item" id="add-ground-site" onclick="handleContextClick(this)">Add Ground Site</div>` : ''}
             <div class="context-item" onclick="openPanel(this)" id="options">Options Menu</div>
-            <div class="context-item" onclick="handleContextClick(this)" id="exit-ephem-viewer">Exit ${mainWindow.hpop ? 'HPOP ' : ''}Ephemeris View</div>
         `
         : `
             <div class="context-item" id="add-satellite" onclick="openPanel(this)">Add Satellites</div>
             ${mainWindow.satellites.length > 1 ? `<div class="context-item" onclick="openSatellitePanel()">Open Satellite Panel</div>` : ''}
             <div class="context-item" onclick="openPanel(this)" id="options">Options Menu</div>
+            <div class="context-item" onclick="displayHpopTraj()" id="options">High-Precision Prop Mode</div>
             ${mainWindow.latLongMode ? `<div class="context-item" onclick="openSensorAccessPanel()">Open Access Panel</div>` : ``}
             ${mainWindow.latLongMode ? `<div class="context-item" onclick="handleContextClick(this)" id="add-site-group">Add Site Group</div>` : ``}
             ${mainWindow.latLongMode ? `<div lat="${latLongClick.lat}" long="${latLongClick.long}" class="context-item" id="add-ground-site" onclick="handleContextClick(this)">Add Ground Site</div>` : `<div class="context-item"><label style="cursor: pointer" for="plan-type">Waypoint Planning</label> <input id="plan-type" name="plan-type" onchange="changePlanType(this)" ${mainWindow.burnType === 'waypoint' ? 'checked' : ""} type="checkbox" style="height: 1.5em; width: 1.5em"/></div>`}
@@ -3067,6 +3067,7 @@ function handleContextClick(button) {
             <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-reachability">${mainWindow.satellites[activeSat].reach === undefined ? 'Display' : 'Delete'} Reachability</div>
             <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-conic-volume">Edit Conic Volumes</div>
             <div class="context-item" onclick="generateStkEphemFile(${activeSat})" id="set-conic-volume">Export .e File</div>
+            <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="copy-satellite">Copy Satellite</div>
         `
        let cm = document.getElementById('context-menu')
        let elHeight = cm.offsetHeight
@@ -3282,7 +3283,8 @@ function handleContextClick(button) {
     }
     if (button.id === 'exit-ephem-viewer') {
         document.getElementById('context-menu')?.remove();
-        if (mainWindow.hpop) return displayHpopTraj()
+        mainWindow.hpop = false
+        // if (mainWindow.hpop) return displayHpopTraj()
         if (button.innerText === 'Seed Planning Scenario') {
             let originOrbit = propToTimeAnalytic(mainWindow.originOrbit, mainWindow.scenarioTime)
             console.log(originOrbit);
@@ -3314,6 +3316,23 @@ function handleContextClick(button) {
         }
         mainWindow.ephemViewerMode = false
         mainWindow.satellites = []
+        document.getElementById('context-menu')?.remove();
+    }
+    else if (button.id === 'copy-satellite') {
+        let sat = button.getAttribute('sat')
+        console.log(sat);
+        let curRange = math.norm(Object.values(mainWindow.satellites[sat].curPos).slice(0,3))
+        button.parentElement.innerHTML = `
+                <div class="context-item" onclick="handleContextClick(this)" title="Will attempt to make a satellite with the current range and same az and el to current RIC origin">Range Multiplier <input placeholder="1" type="number" style="width: 6ch;"/></div>
+                <div class="context-item" sat="${sat}" onclick="handleContextClick(this)" id="copy-satellite-execute">Copy</div>
+            `
+    }
+    else if (button.id === 'copy-satellite-execute') {
+        let sat = button.getAttribute('sat')
+        console.log(sat);
+        let mult = Number(button.parentElement.querySelector('input').value)
+        mult = mult === 0 ? 1 : mult
+        copySat(sat, mult)
         document.getElementById('context-menu')?.remove();
     }
     else if (button.id === 'zoom-to-sat') {
@@ -5637,6 +5656,8 @@ function initStateFunction(el) {
                     cov = math.diag(inputs[0].getAttribute('cov').split(',').map(s => Number(s)**2).map(s => math.abs(s) < 1e-10 ? 1e-10 : s))
                     cov = math.multiply(r, cov, math.transpose(r))
                     cov = propEciCovariance(eciState, cov, dt).P
+                    // Check if covariance propagated properly, otherwise delete
+                    cov = cov.filter(s => s.filter(a => isNaN(a)).length > 0).length > 0 ? undefined : cov
                 }
                 eciState = mainWindow.satellites.length === 0 ? eciState : h.propToTime(eciState, date, dt).state
                 
@@ -7056,22 +7077,22 @@ function convertCartesiantoRAE(cart = [[10, 0, 0, 0, 0, 0.04]]) {
     ]]
 }
 
-function copySat(sat = 0) {
-    let s = mainWindow.satellites[sat].curPos
-    let position = [[s.r, s.i, s.c, s.rd, s.id, s.cd]]
-    let rae = convertCartesiantoRAE(position)
-    rae[0][0] *= 1.5
-    rae[0][3] *= 1.5
-    position = convertRAEtoCartesian(rae)
-    mainWindow.satellites[sat].position = {
-        r: position[0][0],
-        i: position[0][1],
-        c: position[0][2],
-        rd: position[0][3],
-        id: position[0][4],
-        cd: position[0][5]
-    }
-    mainWindow.satellites[sat].calcTraj()
+function copySat(sat = 0, r = 1.5) {
+    let ricPosition = Object.values(mainWindow.satellites[sat].curPos)
+    console.log(ricPosition);
+    let rae = convertCartesiantoRAE([ricPosition])
+    rae[0][0] *= r
+    rae[0][3] *= r
+    ricPosition = convertRAEtoCartesian(rae)[0]
+    let currentOrigin = Object.values(getCurrentInertialRic())
+    let eciPosition = Ric2Eci(ricPosition.slice(0,3), ricPosition.slice(3), currentOrigin.slice(0,3),currentOrigin.slice(3))
+    eciPosition = [...math.squeeze(eciPosition.rEcci), ...math.squeeze(eciPosition.drEci)]
+    eciPosition = propToTime(eciPosition, -mainWindow.scenarioTime)
+    eciPosition = PosVel2CoeNew(eciPosition.slice(0,3), eciPosition.slice(3))
+    
+    mainWindow.satellites.push(new Satellite({
+        position: eciPosition
+    }))
 }
 
 function findRangeTime(sat= 0, satTarget = 1, r= 10, time = mainWindow.scenarioTime) {
@@ -11802,7 +11823,7 @@ function handleVcmFile(inText) {
     vel = vel.trim().split(/ {1,}/).map(s => Number(s))
     let chosenState = [...pos, ...vel]
     let covLine = inText.filter(s => s.search(/sigma/i) !== -1)
-    covLine = covLine.map(line => {
+    covLine = covLine.slice(0,2).map(line => {
         return line.match(/[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}\s*[-|\s]\d{1,20}\.\d{1,20}/)[0].trim().split(/ {1,}/).map(s => Number(s))
     })
     covLine = covLine.join(',')
@@ -12112,6 +12133,7 @@ function createHpopStateHistory(startPosition = mainWindow.satellites[0].positio
 
 function displayHpopTraj(update = false, sat = false) {
     
+    document.getElementById('context-menu')?.remove();
     for (let index = 0; index < mainWindow.satellites.length; index++) {
         mainWindow.satellites[index].latLong = undefined
         
