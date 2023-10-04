@@ -24,6 +24,18 @@ let monteCarloData = null
 let focLen = 1, azD = 45, elD = 45
 document.getElementById('time-slider-range').max = 48*3600
 document.body.append(document.createElement("dialog"))
+
+function generateRandomString(length = 20) {
+    let letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890!@#$%^&*()'
+    let string = ''
+    console.log((1/letters.length)**length);
+    for (let index = 0; index < length; index++) {
+        string += letters[math.floor(math.random()*letters.length)]
+        
+    }
+    return string
+}
+
 // If on touch screen, set and add required assets
 if (checkTouchScreen()) {
     let screenViewChange = document.createElement('div')
@@ -40,6 +52,12 @@ if (checkTouchScreen()) {
         keydownFunction({key: ' '})
     }
     document.body.append(screenViewChange)
+}
+
+function getCurrentUtcHour() {
+    let startTime = new Date()
+    let offset = startTime.getTimezoneOffset()
+    return new Date(startTime.getFullYear(), startTime.getMonth(), startTime.getDate(), startTime.getHours()+offset/60)
 }
 
 function recordGif() {
@@ -129,7 +147,6 @@ class windowCanvas {
     scenarioLength = 48;
     burnSensitivity = 0.3;
     scenarioTime = 0.1; // Dont know why but this prevents bugs with burning immediately
-    startDate = new Date(document.getElementById('start-time').value);
     state = 'ri';
     burnType = 'waypoint';
     showFinite = true;
@@ -216,8 +233,7 @@ class windowCanvas {
             arg: 360*Math.PI / 180 * Math.random(),
             tA: 360*Math.PI / 180 * Math.random()
         }
-        let startDate = new Date()
-        this.startDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+        this.startDate = getCurrentUtcHour()
         this.scenarioLength = 48
         this.updateOrigin(this.originOrbit)
     }
@@ -1486,6 +1502,7 @@ class Satellite {
         this.pixelPos = [0,0]
         this.cov = cov
         this.showGroundTrack = false
+        this.identifier = generateRandomString()
         setTimeout(() => {
             this.burns = burns;
             this.calcTraj(true)
@@ -2288,6 +2305,7 @@ function keydownFunction(key) {
 
     }
     else if (key.key === 'n' || key.key === 'N') {
+        if (mainWindow.ephemViewerMode) return
         let newSat = mainWindow.satellites.length === 0 ?  new Satellite({
                 name: 'Chief',
                 position: {...mainWindow.originOrbit},
@@ -2676,6 +2694,7 @@ function generateBurnContextMenu(satIndex = 0,burnIndex = 0, alt = false, shift 
 }
 
 function startContextClick(event) {
+    removeScreenAlert()
     if (event.pointerType === 'touch' && mainWindow.aciveTouches.length > 1) return event.preventDefault()
     if (event.clientX === undefined) {
         event.clientX = event.touches[0].clientX
@@ -4281,18 +4300,20 @@ function showScreenAlert(message = 'test alert', textSize = 1, bottom = '80%', d
     setTimeout(() => {
         document.getElementsByClassName('screen-alert')[0].style.bottom = message === 'start-screen' ? '60%' : bottom;
     },50)
-    setTimeout(() => {
-        try {
-            document.getElementsByClassName('screen-alert')[0].style.bottom = '100%';
-            document.getElementsByClassName('screen-alert')[0].style.opacity = '0';
-            setTimeout(() => {
-                document.getElementsByClassName('screen-alert')[0].remove();
-            }, 500)
-        } catch (error) {
-            
-        }
-    },message === 'start-screen' ? 60000 : delay)
+    setTimeout(removeScreenAlert,message === 'start-screen' ? 60000 : delay)
 
+}
+
+function removeScreenAlert() {
+    try {
+        document.getElementsByClassName('screen-alert')[0].style.bottom = '100%';
+        document.getElementsByClassName('screen-alert')[0].style.opacity = '0';
+        setTimeout(() => {
+            document.getElementsByClassName('screen-alert')[0].remove();
+        }, 500)
+    } catch (error) {
+        
+    }
 }
 
 changePlanType = (box) => mainWindow.burnType = box.checked ? 'waypoint' : 'manual';
@@ -4738,33 +4759,12 @@ function checkJ200StringValid(string) {
 }
 
 document.getElementById('confirm-option-button').addEventListener('click', (click) => {
-    let stateInputs = document.querySelectorAll('.origin-input')
-    let coe = document.getElementById('coe-radio').checked
-    let state = [...stateInputs].map(s => Number(s.value === '' ? s.placeholder : s.value))
-    let startDate = new Date(document.getElementById('start-time').value)
     let catsRadio = [...document.querySelectorAll('.cats-radio')].filter(s => s.checked).map(s => s.value)[0]
     catsRadio = catsRadio === undefined ? '0' : catsRadio
     mainWindow.zeroCatsGood = catsRadio === '0'
-    console.log(catsRadio);
-
-    if (!coe) {
-        state = PosVel2CoeNew(state.slice(0,3), state.slice(3,6))
-    }
-    else {
-        state = {
-            a: state[0],
-            e: state[1],
-            i: state[2] * Math.PI / 180,
-            raan: state[3] * Math.PI / 180,
-            arg: state[4] * Math.PI / 180,
-            tA: state[5] * Math.PI / 180
-        }
-    }
-    mainWindow.startDate = startDate
-    mainWindow.timeDelta = 2 * Math.PI * 0.006 / mainWindow.mm
+    
     mainWindow.scenarioLength = Number(document.querySelector('#scen-length-input').value === '' ? document.querySelector('#scen-length-input').placeholder : document.querySelector('#scen-length-input').value)
     
-    mainWindow.updateOrigin(state)
     let strStart = Number(document.querySelector('#str-start-input').value === ''? document.querySelector('#str-start-input').placeholder : document.querySelector('#str-start-input').value)
     let strEnd = Number(document.querySelector('#str-end-input').value === ''? document.querySelector('#str-end-input').placeholder : document.querySelector('#str-end-input').value)
     mainWindow.stringLimit = [strStart - 1, strEnd]
@@ -4977,10 +4977,6 @@ function openPanel(button) {
     }
     else if (button.id === 'options') {
         // If ephem viewer is on, don't display origin orbit as it's based on the ephemeris
-        let optionDivs = [...document.querySelector('#options-panel').querySelectorAll('div')].slice(2,13).forEach(optDiv => optDiv.style.display = mainWindow.ephemViewerMode ? 'none' : '')
-        console.log(optionDivs);
-        document.getElementById('coe-radio').checked = true
-        changeOriginInput({id: 'coe-radio'})
         // Set cats radio button to current setting
         document.querySelector('#cats-good-'+(mainWindow.zeroCatsGood ? '0' : '180')).checked = true
         // Reset scenario length input to planceholder of current
@@ -5744,7 +5740,7 @@ function initStateFunction(el) {
                 } catch (error) {
                     return showScreenAlert('Not a valid TLE')
                 }
-                styleInputs[3].value = tleValue.objectID
+                styleInputs[3].value = styleInputs[3].value === '' ? tleValue.objectID : styleInputs[3].value
                 tleValue = tleValue.getRVForDate(date)
                 tleValue = [...tleValue[0], ...tleValue[1]]
                 tleValue = astro.teme2eci(tleValue.slice(0,3), tleValue.slice(3), date)
@@ -12388,4 +12384,78 @@ function runSgp4(line1 = '1 57861U 23142A   23261.56716943  .00007592  00000-0  
     let rv = tle.getRV(0);
     rv = [tle.epoch, ...rv[0], ...rv[1]]
     return rv
+}
+
+function approxLaunch(site = 0, options = {}) {
+    let incRaanFromTime = function(site, az, time, a, propTime) {
+        let launchTime = new Date(mainWindow.startDate - (-1000*time))
+        let velNorm = (398600.4418/a)**0.5
+        let eciSite = astro.latlongrange2eci(site.lat, site.long, launchTime)
+        let position = eciSite.map(s => s*a/math.norm(eciSite))
+        let siteTopoX = eciSite.map(s => s/math.norm(eciSite))
+        let siteTopoY = math.cross([0,0,1], siteTopoX)
+        siteTopoY = siteTopoY.map(s => s/math.norm(siteTopoY))
+        let siteTopoZ = math.cross(siteTopoX, siteTopoY)
+        let topoR = math.transpose([siteTopoX, siteTopoY, siteTopoZ])
+        let state = math.dotMultiply(velNorm, math.multiply(topoR, [0, Math.sin(az*Math.PI/180), Math.cos(az*Math.PI/180)]))
+        state = [...position, ...state]   
+        state= propToTime(state, propTime) 
+        return astro.j20002Coe(state)
+    }
+    let {a = 6800, i = 50, raan = 45, ascending = true} = options
+    site = mainWindow.groundSites[site].coordinates
+    let time = 0, az = astro.launchAzFromLatitude(i,site.lat, ascending)
+    console.log(az ,ascending);
+    i *= Math.PI/180
+    raan *= Math.PI/180
+    for (let index = 0; index < 10; index++) {
+        let az1 = az + 0
+        let az2 = az + 0.01
+        let state1 = incRaanFromTime(site, az1, time, a)
+        let state2 = incRaanFromTime(site, az2, time, a)
+        console.log(state1.i*180/Math.PI, az);
+        let der =(state2.i-state1.i)/0.01
+        az += (i-state1.i)/der
+    }
+    for (let index = 0; index < 10; index++) {
+        let time1 = time + 0
+        let time2 = time + 0.01
+        let state1 = incRaanFromTime(site, az, time1, a)
+        let state2 = incRaanFromTime(site, az, time2, a)
+        let der =(state2.raan-state1.raan)/0.01
+        time += (raan-state1.raan)/der
+    }
+    for (let index = 0; index < 10; index++) {
+        let az1 = az + 0
+        let az2 = az + 0.01
+        let state1 = incRaanFromTime(site, az1, time, a)
+        let state2 = incRaanFromTime(site, az2, time, a)
+        console.log(state1.i*180/Math.PI, az);
+        let der =(state2.i-state1.i)/0.01
+        az += (i-state1.i)/der
+    }
+    for (let index = 0; index < 10; index++) {
+        let time1 = time + 0
+        let time2 = time + 0.01
+        let state1 = incRaanFromTime(site, az, time1, a)
+        let state2 = incRaanFromTime(site, az, time2, a)
+        let der =(state2.raan-state1.raan)/0.01
+        time += (raan-state1.raan)/der
+    }
+    for (let index = 0; index < 10; index++) {
+        let az1 = az + 0
+        let az2 = az + 0.01
+        let state1 = incRaanFromTime(site, az1, time, a)
+        let state2 = incRaanFromTime(site, az2, time, a)
+        console.log(state1.i*180/Math.PI, az);
+        let der =(state2.i-state1.i)/0.01
+        az += (i-state1.i)/der
+    }
+    time = time < 0 ? time + 86164.10035200001 : time
+    console.log(time/3600);
+    let state = incRaanFromTime(site, az, time, a, -time)
+    if (mainWindow.satellites.length === 0) mainWindow.updateOrigin(state, false, true)
+    mainWindow.satellites.push(new Satellite({
+        position: state
+    }))
 }

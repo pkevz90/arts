@@ -15,6 +15,11 @@ class astro {
     static cross(a=[1,3,4],b=[3,4,5]) {
         // tbd
     }
+    static mahalanobisDistance(value=[[1,2]], mean=[[0,0]], cov=[[3,0],[0,5]]) {
+        let diff = math.subtract(value, mean)
+        return math.multiply(diff, math.inv(cov), math.transpose(diff))[0]**0.5
+
+    }
     static rot (angle = 45, axis = 1, useDegree = true) {
         angle = useDegree ? angle*0.017453292519943295 : angle
         let rotMat;
@@ -598,6 +603,21 @@ class astro {
         return [[cosZeta*cosTheta*cosZ-sinZeta*sinZ, cosZeta*cosTheta*sinZ+sinZeta*cosZ, cosZeta*sinTheta],
                     [-sinZeta*cosTheta*cosZ-cosZeta*sinZ, -sinZeta*cosTheta*sinZ+cosZeta*cosZ, -sinZeta*sinTheta],
                     [-sinTheta*cosZ, -sinTheta*sinZ, cosTheta]]
+    }
+    static launchAzFromLatitude(inc = 45, lat = 30, ascending = true) {
+        if (inc < lat) return false
+        let az = 180/Math.PI*Math.asin(Math.cos(inc*Math.PI/180)/Math.cos(lat*Math.PI/180))
+        az = ascending ? az : 180-az
+        return az
+    }
+    static launchGmstTimeFromLatLong(inc = 45, raan = 30, lat = 30, long = -80, ascending = true) {
+        let az = astro.launchAzFromLatitude(inc, lat, ascending)
+        let gmst = Math.cos(az*Math.PI/180)/Math.sin(inc*Math.PI/180)
+        gmst = Math.acos(gmst)*180/Math.PI
+        gmst = raan+gmst-long
+        return {
+            az, gmst
+        }
     }
 }
 

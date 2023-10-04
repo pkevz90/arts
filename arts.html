@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>ROTS</title>
     <script src="./js/math.min.js"></script>
+    <script src="./js/ekf.js"></script>
     <script src="./js/sgp4_vz_edits.js"></script>
     <script src="./js/astro_vz.js"></script>
     <script src="./js/LZWEncoder.js"></script>
@@ -101,27 +102,6 @@
     <div class="full-page-menu panel hidden" id="options-panel">
         <div class="title-text" style="width: 100%; text-align: center; height: auto; font-weight: 900;">Options</div>
         <div>
-            <div class="title-text">Origin ECI State</div>
-            <div style="margin: 20px 5px"><input oninput="changeOriginInput(this)" type="text" style="width: 100%" placeholder="J2000 String from STK" id="string-origin-input"></div>
-            <div style="margin: 20px 5px">Epoch 
-                <input style="width: 60%;" type="datetime-local" id="start-time" name="meeting-time" value="2019-06-01T00:00">
-            </div>
-            <div style="margin: 20px 5px">
-                <label for="eci-radio">ECI</label>
-                <input onchange="changeOriginInput(this)" type="radio" id="eci-radio" name="input-type">
-                <label for="coe-radio">COE</label>
-                <input onchange="changeOriginInput(this)" type="radio" id="coe-radio" name="input-type" checked>
-                <!-- <label for="geo-radio">GEO Belt</label>
-                <input onchange="changeOriginInput(this)" type="radio" id="geo-radio" name="input-type"> -->
-            </div>
-            
-            <div style="margin: 20px 5px"><em>a</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> km</div>
-            <div style="margin: 20px 5px"><em>e</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> </div>
-            <div style="margin: 20px 5px"><em>i</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
-            <div style="margin: 20px 5px"><em>#937</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
-            <div style="margin: 20px 5px"><em>#969</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
-            <div style="margin: 20px 5px"><em>#957</em> <input class="origin-input" style="width: 15ch;" placeholder="0" type="Number" step="1"> deg</div>
-            
             <div style="margin: 20px 5px">Scenario Length <input id="scen-length-input" type="Number" min="0" max="360" step="1"> hrs</div>
             <div>
                 <input class="cats-radio" type="radio" id="cats-good-0" name="fav_language" value="0" checked>
