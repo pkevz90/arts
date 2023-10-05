@@ -127,6 +127,7 @@ class windowCanvas {
         plotCenter: 0,
         plotWidth: 200,
         speed: 0.2,
+        orthoAngle: 45,
         ri: {x: 0.5, y: 0.5, w: 1, h: 1},
         ci: {x: 0.5, y: 1, w: 1, h: 0},
         rc: {x: 0, y: 1, w: 0, h: 0},
@@ -189,6 +190,7 @@ class windowCanvas {
         dataReqs: [],
         fontSize: 12.5
     };
+    orthoAngle = 45;
     relDataDivs = []
     makeGif = {
         start: false,
@@ -814,6 +816,7 @@ class windowCanvas {
         
         elD += (this.desired.elD - elD) * this.desired.speed 
         azD += (this.desired.azD - azD) * this.desired.speed 
+        this.orthoAngle += (this.desired.orthoAngle - this.orthoAngle) * this.desired.speed 
     }
     setSize(width, height) {
         this.cnvs.width = width;
@@ -2000,12 +2003,14 @@ let timeFunction = false;
 //------------------------------------------------------------------
 // Adding event listeners for window objects
 //------------------------------------------------------------------
+let ctrlDown = false
 function keydownFunction(key) {
     // Ignore unless given a object key which says to continue (only applies to ground track context menu)
     if (key.ignoreContext !== true && document.getElementById('context-menu') !== null) return
     if (document.querySelector('dialog').open) return
     key.key = key.key.toLowerCase();
     if (key.key === 'Control') {
+        ctrlDown = true
         let buttons = document.getElementsByClassName('ctrl-switch');
         for (let ii = 0; ii < buttons.length; ii++) {
             if (buttons[ii].innerText === 'Confirm') return;
@@ -2546,6 +2551,7 @@ window.addEventListener('keydown', keydownFunction)
 window.addEventListener('keyup', key => {
     key = key.key;
     if (key === 'Control') {
+        ctrlDown = false
         let buttons = document.getElementsByClassName('ctrl-switch');
         for (let ii = 0; ii < buttons.length; ii++) {
             if (buttons[ii].innerText === 'Confirm') return;
@@ -5521,7 +5527,8 @@ function calcBurns() {
     if (!this.mousePosition) return;
     let mousePosition = threeD ? get3dClickRicPosition(this.mousePosition[0], this.mousePosition[1]) : this.convertToRic(this.mousePosition);
     if (!this.mousePosition || !mousePosition || !mousePosition[this.burnStatus.frame]) return;
-    if (mainWindow.burnStatus.type === 'waypoint' && sat.a > 0.000001 && sat.burns[this.burnStatus.burn].waypoint !== false && !cross) {
+    let type = ctrlDown ? 'direction' : mainWindow.burnStatus.type
+    if (type === 'waypoint' && sat.a > 0.000001 && sat.burns[this.burnStatus.burn].waypoint !== false && !cross) {
         let originAtTime = propToTimeAnalytic(mainWindow.originOrbit, sat.burns[this.burnStatus.burn].time+sat.burns[this.burnStatus.burn].waypoint.tranTime)
         let target= Eci2Ric(originAtTime.slice(0,3), originAtTime.slice(3,6), sat.burns[this.burnStatus.burn].waypoint.target.slice(0,3), [0,0,0])
         target = [
@@ -5538,6 +5545,14 @@ function calcBurns() {
             cross ? (mousePosition[threeD ? 'ci' : this.burnStatus.frame].c - sat.burns[this.burnStatus.burn].location[2]) *
                 mainWindow.burnSensitivity / 1000 : sat.burns[this.burnStatus.burn].direction[2]
         ]
+        if (!cross && ctrlDown) {
+            if (math.abs(sat.burns[this.burnStatus.burn].direction[0]) > math.abs(sat.burns[this.burnStatus.burn].direction[1])) {
+                sat.burns[this.burnStatus.burn].direction[1] = 0
+            }
+            else {
+                sat.burns[this.burnStatus.burn].direction[0] = 0
+            }
+        }
         sat.burns[this.burnStatus.burn].waypoint = false
         // Reset cross-track directiom burns in future to 0
         for (let hh = this.burnStatus.burn + 1; hh < sat.burns.length; hh++) {
@@ -10070,6 +10085,7 @@ function openInstructionWindow() {
                     <ul>
                         <li>Click and drag to desired waypoint, changing time of flight with mouse wheel</li>
                         <li>Switch to manual burn direction on right-click menu to click and drag burn direction</li>
+                        <li>Holding <kbd>Ctrl</kbd> assumes direction burn purely in one of the RIC direction</li>
                         <li>Open <em>Maneuver Options</em> panel by right-clicking satellite itself and manually insert RIC coordinate and TOF</li>
                         <li>More burn options available within right-click menu</li>
                         <li>Particle Swarm Optimization utilized to find best position to gain sun, based on delta-V</li>
