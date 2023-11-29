@@ -292,26 +292,32 @@ class windowCanvas {
             // console.log(this.startDate);
             let tProp2 = tProp+this.timeDelta / 2
             let calcPosition2 = propToTimeAnalytic(position, tProp2, this.j2)
-            sunHistory.push([tProp, this.ricSunFromEciState([new Date(this.startDate - (-1000*tProp)), ...calcPosition.slice()])])
-            sunHistory.push([tProp2, this.ricSunFromEciState([new Date(this.startDate - (-1000*tProp2)), ...calcPosition2.slice()])])
-            moonHistory.push([tProp, this.ricMoonFromEciState([new Date(this.startDate - (-1000*tProp)), ...calcPosition.slice()])])
-            moonHistory.push([tProp2, this.ricMoonFromEciState([new Date(this.startDate - (-1000*tProp2)), ...calcPosition2.slice()])])
+            sunHistory.push([tProp, this.ricSunFromEciState([new Date(this.startDate - (-1000*tProp)), ...calcPosition.slice()]),math.norm(this.ricSunFromEciState([new Date(this.startDate - (-1000*tProp)), ...calcPosition.slice()], false))])
+            sunHistory.push([tProp2, this.ricSunFromEciState([new Date(this.startDate - (-1000*tProp2)), ...calcPosition2.slice()]),math.norm(this.ricSunFromEciState([new Date(this.startDate - (-1000*tProp2)), ...calcPosition2.slice()], false))])
+            moonHistory.push([tProp, this.ricMoonFromEciState([new Date(this.startDate - (-1000*tProp)), ...calcPosition.slice()]),math.norm(this.ricMoonFromEciState([new Date(this.startDate - (-1000*tProp)), ...calcPosition.slice()], false))])
+            moonHistory.push([tProp2, this.ricMoonFromEciState([new Date(this.startDate - (-1000*tProp2)), ...calcPosition2.slice()]),math.norm(this.ricMoonFromEciState([new Date(this.startDate - (-1000*tProp2)), ...calcPosition2.slice()], false))])
             // position = runge_kutta4(inertialEom, position, this.timeDelta)
             tProp += this.timeDelta
         }
         return {stateHistory, rotHistory, sunHistory, moonHistory}
     }
-    ricSunFromEciState(state = [new Date(), 42164, 0, 0, 0, 3.014, 0]) {
+    ricSunFromEciState(state = [new Date(), 42164, 0, 0, 0, 3.014, 0], norm = true) {
         // console.log(state);
         let sun = sunFromTime(state.shift())  
         sun = math.squeeze(Eci2Ric(state.slice(0,3), state.slice(3,6), sun, [0,0,0]).rHcw)
+        if (!norm) {
+            return sun
+        }
         sun = math.dotDivide(sun, math.norm(sun))
         return sun
     }
-    ricMoonFromEciState(state = [new Date(), 42164, 0, 0, 0, 3.014, 0]) {
+    ricMoonFromEciState(state = [new Date(), 42164, 0, 0, 0, 3.014, 0], norm = true) {
         // console.log(state);
         let moon = astro.moonEciFromTime(state.shift())  
         moon = math.squeeze(Eci2Ric(state.slice(0,3), state.slice(3,6), moon, [0,0,0]).rHcw)
+        if (!norm) {
+            return moon
+        }
         moon = math.dotDivide(moon, math.norm(moon))
         return moon
     }
@@ -743,7 +749,7 @@ class windowCanvas {
             })
         })
     }
-    getCurrentSun(t = this.scenarioTime) {
+    getCurrentSun(t = this.scenarioTime, norm = true) {
         let curSunIndex = this.originSun.findIndex(s => s[0] > t)
         if (curSunIndex === -1) {
             return this.originSun[this.originSun.length-1][1]
@@ -751,6 +757,10 @@ class windowCanvas {
         let leadSun = this.originSun[curSunIndex]
         let trailSun = this.originSun[curSunIndex-1]
         let sun = math.add(math.subtract(leadSun[1], trailSun[1]).map(s => s*(t-trailSun[0])/(leadSun[0]-trailSun[0])), trailSun[1])
+        if (!norm) {
+           let sunR = trailSun[2] + (leadSun[2]-trailSun[2])*(t-trailSun[0]) / (leadSun[0]-trailSun[0])
+           return sun.map(s => s*sunR)
+        }
         return sun
         // let monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
         // let curDate = new Date(mainWindow.startDate)
@@ -761,7 +771,7 @@ class windowCanvas {
         // initSunWithCrossComponent[2] = maxCt * Math.sin(freq * (daySinceWinterSolstice + t / 86164))
         // return math.squeeze(math.multiply(rotationMatrices(-t * (this.mm * 180 / Math.PI - 360 / 365 / 86164), 3), math.transpose([initSunWithCrossComponent])));
     }
-    getCurrentMoon(t = this.scenarioTime) {
+    getCurrentMoon(t = this.scenarioTime, norm = true) {
         let curMoonIndex = this.originMoon.findIndex(s => s[0] > t)
         if (curMoonIndex === -1) {
             return this.originMoon[this.originMoon.length-1][1]
@@ -769,7 +779,12 @@ class windowCanvas {
         let leadMoon = this.originMoon[curMoonIndex]
         let trailMoon = this.originMoon[curMoonIndex-1]
         let moon = math.add(math.subtract(leadMoon[1], trailMoon[1]).map(s => s*(t-trailMoon[0])/(leadMoon[0]-trailMoon[0])), trailMoon[1])
-        return moon
+        
+        if (!norm) {
+            let moonR = trailMoon[2] + (leadMoon[2]-trailMoon[2])*(t-trailMoon[0]) / (leadMoon[0]-trailMoon[0])
+            return moon.map(s => s*moonR)
+         }
+         return moon
     }
     setInitSun(sun) {
         this.initSun = sun;
@@ -2003,7 +2018,7 @@ let timeFunction = false;
 //------------------------------------------------------------------
 // Adding event listeners for window objects
 //------------------------------------------------------------------
-let ctrlDown = false
+let ctrlDown = false,  shiftDown = false
 function keydownFunction(key) {
     // Ignore unless given a object key which says to continue (only applies to ground track context menu)
     if (key.ignoreContext !== true && document.getElementById('context-menu') !== null) return
@@ -2018,6 +2033,9 @@ function keydownFunction(key) {
         for (let ii = 0; ii < buttons.length; ii++) {
             buttons[ii].innerText = 'Delete';
         }
+    }
+    if (key.key === 'Shift') {
+        shiftDown = true
     }
     else if (key.key === 'Tab') {
         // let a = document.getElementById('add-waypoint-button').hasFocus();
@@ -2355,6 +2373,10 @@ function keydownFunction(key) {
     }
     else if (key.key === 'E' && key.shiftKey && key.altKey) downloadFile('error_file.txt', errorList.map(e => e.stack).join('\n'))
     else if (key.key === 'w' && key.altKey) openWhiteCellWindow()
+    else if (key.key === 'w' || key.key === 'W') {
+        mainWindow.burnType = mainWindow.burnType === 'waypoint' ? 'direction' : 'waypoint'
+        showScreenAlert('Burn type switched to ' + mainWindow.burnType)
+    }
     else if (key.key === 'w') moveTrueAnomaly(-0.1, false)
     else if (key.key === 'e') moveTrueAnomaly(0.1, false)
 }
@@ -2559,6 +2581,9 @@ window.addEventListener('keyup', key => {
         for (let ii = 0; ii < buttons.length; ii++) {
             buttons[ii].innerText = 'Edit';
         }
+    }
+    if (key === 'Shift') {
+        shiftDown = false
     }
     
     if (document.getElementById('context-menu') !== null) return
@@ -2947,11 +2972,22 @@ function startContextClick(event) {
                 <div class="context-item" onclick="handleContextClick(this)" id="direction-maneuver">Insert Direction Burn</div>
                 <div class="context-item" onclick="handleContextClick(this)" id="prop-options">Propagate To</div>
                 ${mainWindow.satellites.length > 1 ? '<div class="context-item" onclick="handleContextClick(this)" id="display-data-1">Display Data</div>' : ''}
+                
             `
             if (mainWindow.latLongMode) {
                 newInnerHTML += `
                     <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="zoom-to-sat">Zoom To</div>
                     <div class="context-item" onclick="changeOrigin(${activeSat})" id="prop-options">Focus</div>
+                `
+            }
+            else {
+                newInnerHTML += ` 
+                    <div style="font-size: 0.4em; padding: 2.5px 15px 0px; margin-top: 5px; color: white; cursor: default;">
+                        RIC Position To Origin
+                    </div>
+                    <div style="font-size: 0.75em; padding: 0px 15px 1px; color: white; cursor: default;">
+                        ${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s
+                    </div>
                 `
             }
         }
@@ -2960,6 +2996,13 @@ function startContextClick(event) {
                 <div class="context-item" id="maneuver-options" onclick="handleContextClick(this)" onmouseover="handleContextClick(event)">Manuever Options</div>
                 <div class="context-item" onclick="handleContextClick(this)" id="prop-options">Propagate To</div>
                 <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="user-actions">User Actions</div>
+                
+                <div style="font-size: 0.4em; padding: 2.5px 15px 0px; margin-top: 5px; color: white; cursor: default;">
+                RIC Position To Origin
+                </div>
+                <div style="font-size: 0.75em; padding: 0px 15px 1px; color: white; cursor: default;">
+                    ${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s
+                </div>
                 `
         }
         else {
@@ -2969,12 +3012,6 @@ function startContextClick(event) {
             `
         }
         newInnerHTML += `
-            <div style="font-size: 0.4em; padding: 2.5px 15px 0px; margin-top: 5px; color: white; cursor: default;">
-                RIC Position To Origin
-            </div>
-            <div style="font-size: 0.75em; padding: 0px 15px 1px; color: white; cursor: default;">
-                ${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s
-            </div>
             <div style="font-size: 0.4em; padding: 1px 15px 0px; margin-top: 5px; color: white; cursor: default;">
                 Ground Position
             </div>
@@ -4544,6 +4581,9 @@ document.getElementById('main-plot').addEventListener('pointerup', event => {
 document.getElementById('main-plot').addEventListener('pointerleave', () => {
     mainWindow.frameMove = false
     mainWindow.mousePosition = undefined
+    mainWindow.currentTarget = false;
+    mainWindow.satellites.forEach(sat => sat.calcTraj());
+    mainWindow.burnStatus.type = false;
 })
 
 document.getElementById('main-plot').addEventListener('pointermove', event => {
@@ -5527,7 +5567,7 @@ function calcBurns() {
     if (!this.mousePosition) return;
     let mousePosition = threeD ? get3dClickRicPosition(this.mousePosition[0], this.mousePosition[1]) : this.convertToRic(this.mousePosition);
     if (!this.mousePosition || !mousePosition || !mousePosition[this.burnStatus.frame]) return;
-    let type = ctrlDown ? 'direction' : mainWindow.burnStatus.type
+    let type = mainWindow.burnStatus.type
     if (type === 'waypoint' && sat.a > 0.000001 && sat.burns[this.burnStatus.burn].waypoint !== false && !cross) {
         let originAtTime = propToTimeAnalytic(mainWindow.originOrbit, sat.burns[this.burnStatus.burn].time+sat.burns[this.burnStatus.burn].waypoint.tranTime)
         let target= Eci2Ric(originAtTime.slice(0,3), originAtTime.slice(3,6), sat.burns[this.burnStatus.burn].waypoint.target.slice(0,3), [0,0,0])
@@ -5540,12 +5580,12 @@ function calcBurns() {
         sat.burns[this.burnStatus.burn].waypoint.target = target
     } else {
         sat.burns[this.burnStatus.burn].direction = [
-            cross ? sat.burns[this.burnStatus.burn].direction[0] : (mousePosition[this.burnStatus.frame].r - sat.burns[this.burnStatus.burn].location[0]) * mainWindow.burnSensitivity / 1000,
-            cross ? sat.burns[this.burnStatus.burn].direction[1] : (mousePosition[this.burnStatus.frame].i - sat.burns[this.burnStatus.burn].location[1]) * mainWindow.burnSensitivity / 1000,
+            cross ? sat.burns[this.burnStatus.burn].direction[0] : (mousePosition[this.burnStatus.frame].r - sat.burns[this.burnStatus.burn].location[0]) * 240 / mainWindow.plotWidth * mainWindow.burnSensitivity / 1000,
+            cross ? sat.burns[this.burnStatus.burn].direction[1] : (mousePosition[this.burnStatus.frame].i - sat.burns[this.burnStatus.burn].location[1]) * 240 / mainWindow.plotWidth * mainWindow.burnSensitivity / 1000,
             cross ? (mousePosition[threeD ? 'ci' : this.burnStatus.frame].c - sat.burns[this.burnStatus.burn].location[2]) *
                 mainWindow.burnSensitivity / 1000 : sat.burns[this.burnStatus.burn].direction[2]
         ]
-        if (!cross && ctrlDown) {
+        if (!cross && shiftDown) {
             if (math.abs(sat.burns[this.burnStatus.burn].direction[0]) > math.abs(sat.burns[this.burnStatus.burn].direction[1])) {
                 sat.burns[this.burnStatus.burn].direction[1] = 0
             }
@@ -5569,7 +5609,7 @@ function calcBurns() {
     ctx.fillStyle = sat.color
     ctx.beginPath();
     ctx.moveTo(initPos.x, initPos.y);
-    let dist = mag * 1000 / this.burnSensitivity;
+    let dist = mag * 1000 / 240 * mainWindow.plotWidth / this.burnSensitivity;
     let point2 = {r: sat.burns[this.burnStatus.burn].location[0] + dist * sat.burns[this.burnStatus.burn].direction[0] / mag, i: sat.burns[this.burnStatus.burn].location[1] + dist * sat.burns[this.burnStatus.burn].direction[1]/ mag, c: sat.burns[this.burnStatus.burn].location[2] + dist * sat.burns[this.burnStatus.burn].direction[2] / mag}
     let finalPos = this.convertToPixels(point2)[this.burnStatus.frame];
     ctx.lineTo(finalPos.x, finalPos.y);
@@ -8699,16 +8739,93 @@ function draw3dScene(az = azD, el = elD) {
     let lineLength = 0.25 * mainWindow.plotHeight
     let sunLength = lineLength * 0.8
     let viewDistance = mainWindow.plotWidth/2
+    
+    let viewPosition = [0,0,viewDistance*3]
     let points = []
     let ctx = mainWindow.getContext()
     let d = lineLength * 2 
     let r = math.multiply( rotationMatrices(el, 2), rotationMatrices(az, 3))
-    let curSun = mainWindow.getCurrentSun().map(s => s * sunLength)
-    let curMoon = mainWindow.getCurrentMoon().map(s => s * sunLength)
+    let curSun = mainWindow.getCurrentSun(this.scenarioTime, false)
+    let curMoon = mainWindow.getCurrentMoon(this.scenarioTime, false)
     let originEci = propToTimeAnalytic(mainWindow.originOrbit, mainWindow.scenarioTime)
     let rOriginEci = math.norm(originEci.slice(0,3))
+    
+    // Draw celestial bodies
+    let curEarth = [-rOriginEci,0,0]
+    let curMoonLocation = curMoon.slice()
+    curMoon = curMoon.map(s => s*sunLength/math.norm(curMoon))
+    let curSunLocation = curSun.slice()
+    curSun = curSun.map(s => s*sunLength/math.norm(curSun))
+    // Sun
+    let sunPos = math.multiply(r, curSunLocation)
+    points.push({
+        color: '#fffa00',
+        position: sunPos,
+        size: 695700*mainWindow.cnvs.width*2/mainWindow.plotWidth,
+        type: 'circle'
+    })
+    // Earth
+    let earthPosition = math.multiply(r, curEarth)
+    let earthPixelRadius = 6371*mainWindow.cnvs.width/mainWindow.plotWidth
+    let earthIllum = astro.moonPhaseFromAngle(viewPosition, earthPosition, sunPos)
+    let relEarthSun = math.subtract(sunPos, earthPosition)
+    relEarthSun = math.atan2(relEarthSun[1], relEarthSun[0])
+    points.push({
+        color: earthIllum > 0.5 ? '#002233' : '#224455',
+        position: earthPosition,
+        size: earthPixelRadius*2,
+        text: mainWindow.primaryBody,
+        textColor: mainWindow.colors.primaryBody,
+        type: 'circle'
+    },
+    {
+        color: earthIllum > 0.5 ? '#224455' : '#002233',
+        position: earthPosition,
+        size: earthPixelRadius*2,
+        b: earthPixelRadius,
+        type: 'ellipse',
+        start: 0,
+        end: Math.PI,
+        angle:  earthIllum > 0.5 ? (relEarthSun) + Math.PI : (relEarthSun)
+    },{
+        color: earthIllum > 0.5 ? '#224455' : '#002233',
+        position: earthPosition,
+        size: earthPixelRadius*2,
+        type: 'ellipse',
+        angle: relEarthSun-Math.PI/2,
+        b: ((earthIllum > 0.5 ? earthIllum : 1 - earthIllum)-0.5)/0.5*earthPixelRadius
+    })
 
-    // Draw Covariance
+    let moonPosition = math.multiply(r, curMoonLocation)
+    let moonPixelRadius = 1737.4*mainWindow.cnvs.width/mainWindow.plotWidth
+    let moonIllum = astro.moonPhaseFromAngle(viewPosition, moonPosition, sunPos)
+    let relMoonSun = math.subtract(sunPos, moonPosition)
+    relMoonSun = math.atan2(relMoonSun[1], relMoonSun[0])
+    points.push({
+        color: moonIllum > 0.5 ? '#444444' : '#aaaaaa',
+        position: moonPosition,
+        size: moonPixelRadius*2,
+        type: 'circle'
+    },
+    {
+        color: moonIllum > 0.5 ? '#aaaaaa' : '#444444',
+        position: moonPosition,
+        size: moonPixelRadius*2,
+        b: moonPixelRadius,
+        type: 'ellipse',
+        start: 0,
+        end: Math.PI,
+        angle:  moonIllum > 0.5 ? (relMoonSun) + Math.PI : (relMoonSun)
+    },{
+        color: moonIllum > 0.5 ? '#aaaaaa' : '#444444',
+        position: moonPosition,
+        size: moonPixelRadius*2,
+        type: 'ellipse',
+        angle: relMoonSun-Math.PI/2,
+        b: ((moonIllum > 0.5 ? moonIllum : 1 - moonIllum)-0.5)/0.5*moonPixelRadius
+    })
+    // color: '#aaaaaa'
+    // // Draw Covariance
     for (let index = 0; index < mainWindow.satellites.length; index++) {
         if (mainWindow.satellites[index].cov === undefined) continue
         let color = mainWindow.satellites[index].color
@@ -9332,6 +9449,24 @@ function draw3dScene(az = azD, el = elD) {
                 cnvs: mainWindow.cnvs,
                 ctx
             })
+        }
+        if (p.type === 'circle') {
+            console.log(pos.x, pos.y,size/2,0,2*Math.PI, p.color);
+            ctx.fillStyle = p.color
+            ctx.beginPath()
+            ctx.arc(pos.x, pos.y,size/2,0,2*Math.PI)
+            ctx.fill()
+        }
+        else if (p.type === 'ellipse') {
+            ctx.fillStyle = p.color
+            let angle = p.angle || 0
+            let start = p.start || 0
+            let end = p.end || 2*Math.PI
+            let bSize = p.b || size/2
+            bSize /= zRatio
+            ctx.beginPath()
+            ctx.ellipse(pos.x, pos.y, bSize,size/2,-angle,start,end)
+            ctx.fill()
         }
         else {
             ctx.fillStyle = p.color
@@ -10085,7 +10220,7 @@ function openInstructionWindow() {
                     <ul>
                         <li>Click and drag to desired waypoint, changing time of flight with mouse wheel</li>
                         <li>Switch to manual burn direction on right-click menu to click and drag burn direction</li>
-                        <li>Holding <kbd>Ctrl</kbd> assumes direction burn purely in one of the RIC direction</li>
+                        <li>Holding <kbd>Shift</kbd> assumes direction burn purely in one of the RIC direction</li>
                         <li>Open <em>Maneuver Options</em> panel by right-clicking satellite itself and manually insert RIC coordinate and TOF</li>
                         <li>More burn options available within right-click menu</li>
                         <li>Particle Swarm Optimization utilized to find best position to gain sun, based on delta-V</li>
@@ -12201,6 +12336,46 @@ function displayHpopTraj(update = false, sat = false) {
     })
 }
 
+function timeHpopMode() {
+    let startDate = new Date(1,1,1990)
+    let propTime = 43200
+    let maxError = 1e-5
+    let leo = {
+        a: 6900, e: 0, i: 98*Math.PI/180, raan: 0, arg: 0, tA: 9
+    }
+    let geo = {
+        a: 42164, e: 0, i: 5*Math.PI/180, raan: 0, arg: 0, tA: 9
+    }
+    let meo = {
+        a: 26650, e: 0, i: 58*Math.PI/180, raan: 0, arg: 0, tA: 9
+    }
+    leo = astro.coe2J2000(leo)
+    meo = astro.coe2J2000(meo)
+    geo = astro.coe2J2000(geo)
+    let h = new Propagator({order: 30})
+    console.time('leo')
+    console.log(h.propToTime(leo, startDate, propTime, {
+        maxError
+    }).state)
+    console.timeEnd('leo')
+    // console.time('meo')
+    // console.log(h.propToTime(meo, startDate, propTime, {
+    //     maxError
+    // }).state)
+    // // console.log(h.propToTime(meo, startDate, propTime, {
+    // //     maxError: 1e-8
+    // // }).state)
+    // console.timeEnd('meo')
+    // console.time('geo')
+    // console.log(h.propToTime(geo, startDate, propTime, {
+    //     maxError
+    // }).state)
+    // // console.log(h.propToTime(geo, startDate, propTime, {
+    // //     maxError: 1e-8
+    // // }).state)
+    // console.timeEnd('geo')
+
+}
 function geoSatelliteAtLongitude(long = 0, date = mainWindow.startDate, inclination = 0, drift = 0, eccentricity = 0, argLat = 30) {
     let sidAngle = astro.siderealTime(astro.julianDate(date.getFullYear(), date.getMonth()+1, date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds()))
     let a = (360+drift)*Math.PI/180 / 86164
@@ -12473,5 +12648,20 @@ function approxLaunch(site = 0, options = {}) {
     if (mainWindow.satellites.length === 0) mainWindow.updateOrigin(state, false, true)
     mainWindow.satellites.push(new Satellite({
         position: state
+    }))
+}
+
+function getLocation() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(showPosition);
+    } 
+}
+
+function showPosition(position) {
+    mainWindow.groundSites.push(new GroundSite({
+        lat: position.coords.latitude,
+        long: position.coords.longitude,
+        name: 'User',
+        color: '#33aa33'
     }))
 }
