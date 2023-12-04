@@ -751,7 +751,12 @@ class windowCanvas {
     }
     getCurrentSun(t = this.scenarioTime, norm = true) {
         let curSunIndex = this.originSun.findIndex(s => s[0] > t)
+        // console.log(curSunIndex);
         if (curSunIndex === -1) {
+            if (!norm) {
+                let sunR = this.originSun[this.originSun.length-1][2]
+                return this.originSun[this.originSun.length-1][1].map(s => s*sunR)
+             }
             return this.originSun[this.originSun.length-1][1]
         }
         let leadSun = this.originSun[curSunIndex]
@@ -774,6 +779,11 @@ class windowCanvas {
     getCurrentMoon(t = this.scenarioTime, norm = true) {
         let curMoonIndex = this.originMoon.findIndex(s => s[0] > t)
         if (curMoonIndex === -1) {
+            
+            if (!norm) {
+                let moonR = this.originMoon[this.originMoon.length-1][2]
+                return this.originMoon[this.originMoon.length-1][1].map(s => s*moonR)
+             }
             return this.originMoon[this.originMoon.length-1][1]
         }
         let leadMoon = this.originMoon[curMoonIndex]
@@ -8743,10 +8753,12 @@ function draw3dScene(az = azD, el = elD) {
     let viewPosition = [0,0,viewDistance*3]
     let points = []
     let ctx = mainWindow.getContext()
-    let d = lineLength * 2 
+    
     let r = math.multiply( rotationMatrices(el, 2), rotationMatrices(az, 3))
+    let curDate = new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime))
     let curSun = mainWindow.getCurrentSun(this.scenarioTime, false)
     let curMoon = mainWindow.getCurrentMoon(this.scenarioTime, false)
+    // console.log(curSun, curMoon);
     let originEci = propToTimeAnalytic(mainWindow.originOrbit, mainWindow.scenarioTime)
     let rOriginEci = math.norm(originEci.slice(0,3))
     
@@ -8795,20 +8807,19 @@ function draw3dScene(az = azD, el = elD) {
         angle: relEarthSun-Math.PI/2,
         b: ((earthIllum > 0.5 ? earthIllum : 1 - earthIllum)-0.5)/0.5*earthPixelRadius
     })
-
     let moonPosition = math.multiply(r, curMoonLocation)
     let moonPixelRadius = 1737.4*mainWindow.cnvs.width/mainWindow.plotWidth
     let moonIllum = astro.moonPhaseFromAngle(viewPosition, moonPosition, sunPos)
     let relMoonSun = math.subtract(sunPos, moonPosition)
     relMoonSun = math.atan2(relMoonSun[1], relMoonSun[0])
     points.push({
-        color: moonIllum > 0.5 ? '#444444' : '#aaaaaa',
+        color: moonIllum > 0.5 ? '#333333' : '#aaaaaa',
         position: moonPosition,
         size: moonPixelRadius*2,
         type: 'circle'
     },
     {
-        color: moonIllum > 0.5 ? '#aaaaaa' : '#444444',
+        color: moonIllum > 0.5 ? '#aaaaaa' : '#333333',
         position: moonPosition,
         size: moonPixelRadius*2,
         b: moonPixelRadius,
@@ -8817,7 +8828,7 @@ function draw3dScene(az = azD, el = elD) {
         end: Math.PI,
         angle:  moonIllum > 0.5 ? (relMoonSun) + Math.PI : (relMoonSun)
     },{
-        color: moonIllum > 0.5 ? '#aaaaaa' : '#444444',
+        color: moonIllum > 0.5 ? '#aaaaaa' : '#333333',
         position: moonPosition,
         size: moonPixelRadius*2,
         type: 'ellipse',
@@ -9055,6 +9066,11 @@ function draw3dScene(az = azD, el = elD) {
 
     // Draw rudimentary 3d earth if coastlines is on (will slow down considerably for now)
     if (mainWindow.showRicCoastlines) {
+        let rRic = originEci.map(s => s/math.norm(originEci.slice(0,3))).slice(0,3)
+        let cRic = math.cross(rRic, originEci.slice(3)).map(s => s/math.norm(originEci.slice(3)))
+        let iRic = math.cross(cRic,rRic)
+        let rEci2Ric = [rRic,iRic,cRic]
+        
         // lineFilterDistance = (3000000/rOriginEci)**2
         // coastlineEcefPoints.map(coast => {
         //     return coast.filter((s,ii) => ii % 4 === 0).map(point => {
@@ -9069,52 +9085,22 @@ function draw3dScene(az = azD, el = elD) {
         // }).filter(s => s.length > 0).forEach(area => {
         //     points.push(...get3dLinePoints(area, {color: mainWindow.colors.foregroundColor}))
         // })
-        // mainWindow.groundSites.forEach(site => {
-        //     let eciState = astro.latlong2eci(site.coordinates.lat, site.coordinates.long, curDate)
-        //     if (math.dot(eciState, math.subtract(originEciCamera.slice(0,3), eciState)) < 0) return 
-        //     let ricState = math.multiply(rEci2Ric, math.subtract(eciState,originEci.slice(0,3)))
-        //     let position = math.multiply(r, ricState)
-        //     points.push({
-        //         color: '#111111',
-        //         position,
-        //         size: 10,
-        //         text: site.name,
-        //         alpha: 1,
-        //     })
-        // })
+        mainWindow.groundSites.forEach(site => {
+            let eciState = astro.latlong2eci(site.coordinates.lat, site.coordinates.long, curDate)
+            if (math.dot(eciState, math.subtract(originEci.slice(0,3), eciState)) < 0) return 
+            let ricState = math.multiply(rEci2Ric, math.subtract(eciState,originEci.slice(0,3)))
+            let position = math.multiply(r, ricState)
+            // position[2] = earthPosition[2]+1
+            points.push({
+                color: site.color,
+                position,
+                size: rOriginEci/42164*200*mainWindow.cnvs.width/mainWindow.plotWidth,
+                text: site.name,
+                type: 'circle',
+                alpha: 1,
+            })
+        })
         let centerPoint = [-rOriginEci, 0, 0], rEarth = 6371
-        // let centerPointZ = math.multiply(r, centerPoint)[2]
-        // let lats = math.range(-90,90,10,true)._data.map(s => [Math.sin(s*Math.PI / 180), Math.cos(s*Math.PI / 180)])
-        // let longs = math.range(0,360,20,true)._data.map(s => [Math.sin(s*Math.PI / 180), Math.cos(s*Math.PI / 180)])
-        // for (let latsIi = 0; latsIi < lats.length-1; latsIi++) {
-        //     for (let longIi = 0; longIi < longs.length-1; longIi++) {
-        //         let filledPoints = [
-        //             [lats[latsIi], longs[longIi]],
-        //             [lats[latsIi+1], longs[longIi]],
-        //             [lats[latsIi+1], longs[longIi+1]],
-        //             [lats[latsIi], longs[longIi+1]]
-        //         ]
-        //         filledPoints = filledPoints.map(point => math.multiply(r,math.add(centerPoint, [rEarth*point[1][0]*point[0][1], rEarth*point[1][1]*point[0][1],rEarth*point[0][0]])))
-        //         if (filledPoints.filter(s => s[2] > centerPointZ).length === 0) continue
-        //         let aveZ = (filledPoints[0][2]+filledPoints[1][2]+filledPoints[2][2]+filledPoints[3][2])/4;
-        //         points.push({
-        //             color: '#111111',
-        //             position: [filledPoints, 0, aveZ]
-        //         })
-        //     }
-        // }
-        for (let lat = -60; lat <= 60; lat+=30) {
-            let rLat = rEarth*Math.cos(lat*Math.PI/180)
-            let hLat = rEarth*Math.sin(lat*Math.PI/180)
-            let circlePoints = circleTrig.map(angs => math.multiply(r, math.add(centerPoint, [rLat*angs[0], rLat*angs[1], hLat])))
-            points.push(...get3dLinePoints(circlePoints, {color: '#224466', size: 2, closed: true}))
-        }
-        for (let long = 0; long < 360; long+=30) {
-            let cosLong = Math.cos(long*Math.PI/180)
-            let sinLong = Math.sin(long*Math.PI/180)
-            let circlePoints = circleTrig.map(angs => math.multiply(r, math.add(centerPoint, [rEarth*angs[0]*cosLong, rEarth*angs[0]*sinLong, rEarth*angs[1]])))
-            points.push(...get3dLinePoints(circlePoints, {color: '#224466', size: 2, closed: true}))
-        }
 
     }
     // console.time('axis')
@@ -9450,8 +9436,8 @@ function draw3dScene(az = azD, el = elD) {
                 ctx
             })
         }
-        if (p.type === 'circle') {
-            console.log(pos.x, pos.y,size/2,0,2*Math.PI, p.color);
+        else if (p.type === 'circle') {
+            // console.log(pos.x, pos.y,size/2,0,2*Math.PI, p.color);
             ctx.fillStyle = p.color
             ctx.beginPath()
             ctx.arc(pos.x, pos.y,size/2,0,2*Math.PI)
