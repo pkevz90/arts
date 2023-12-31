@@ -1,6 +1,6 @@
-let appAcr = 'ROTS 2.9.6'
+let appAcr = 'ROTS 3.0'
 let appName = 'Relative Orbital Trajectory System'
-let cao = '23 Sept 2023'
+let cao = '4 Dec 2023'
 document.title = appAcr
 // Various housekeepin to not change html
 document.getElementById('add-satellite-panel').getElementsByTagName('span')[0].classList.add('ctrl-switch');
@@ -4069,7 +4069,8 @@ function handleContextClick(button) {
     }
     else if (button.id === 'dsk-maneuver') {
         button.parentElement.innerHTML = `
-            <div class="context-item" >Time: <input value="3" type="Number" style="width: 3em; font-size: 1em"> hrs</div>
+            <div class="context-item" >Time: <input placeholder="6" type="Number" style="width: 3em; font-size: 1em"> hrs</div>
+            <div class="context-item" >Repeat: <input placeholder="0" type="Number" style="width: 3em; font-size: 1em"> times</div>
             <div class="context-item" onkeydown="handleContextClick(this)" onclick="handleContextClick(this)" id="execute-dsk" tabindex="0">Execute</div>
         `
         document.getElementsByClassName('context-item')[0].getElementsByTagName('input')[0].focus();
@@ -4169,17 +4170,18 @@ function handleContextClick(button) {
         document.getElementById('context-menu')?.remove();
     }
     else if (button.id === 'execute-dsk') {
-        let inputs = button.parentElement.getElementsByTagName('input');
-        if (inputs[0].value === '') {
-            inputs[0].style.backgroundColor = 'rgb(255,150,150)';
-            return;
-        }
+        let inputs = [...button.parentElement.getElementsByTagName('input')]
+
+        inputs = inputs.map(s => s.value === '' ? Number(s.placeholder) : Number(s.value))
         let sat = button.parentElement.sat;
         mainWindow.satellites[sat].burns = mainWindow.satellites[sat].burns.filter(burn => {
             return burn.time < mainWindow.scenarioTime;
         })
+        let repeat = inputs[1] < 0 ? 0 : inputs[1]
         let curPos = mainWindow.satellites[sat].curPos;
-        insertWaypointBurn(sat, mainWindow.desired.scenarioTime, [curPos.r, curPos.i, curPos.c], Number(inputs[0].value) * 3600)
+        for (let index = 0; index <= repeat; index++) {
+            insertWaypointBurn(sat, mainWindow.desired.scenarioTime, [curPos.r, curPos.i, curPos.c], inputs[0] * 3600)
+        }
         
         document.getElementById('context-menu')?.remove();
     }

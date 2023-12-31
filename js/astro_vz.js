@@ -579,13 +579,7 @@ class astro {
         date = astro.julianDate(date.getFullYear(), date.getMonth()+1, date.getHours(), date.getMinutes(), date.getSeconds()+date.getMilliseconds())
         let ttt = (date - 2451454)/36525
         let prec= astro.precess(ttt, '80')
-        // let {deltapsi, trueeps, meaneps, omega, nut} = astro.nutation(ttt, ddpsi, ddeps)
-        // let eqeg =deltapsi * Math.cos(meaneps)
-        // let eqe = [[Math.cos(eqeg), Math.sin(eqeg), 0],
-        //            [-Math.sin(eqeg), Math.cos(eqeg), 0],
-        //             [0,0,1]]
-        let tm = prec// math.multiply(prec, nut, math.transpose(eqe))
-        // console.log(prec);
+        let tm = prec
         return [...math.multiply(tm, rteme), ...math.multiply(tm, vteme)]
     }
     static precess(ttt) {
