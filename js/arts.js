@@ -8296,8 +8296,7 @@ function handleTleFile(file) {
     let tleRawStates = []
     let outNames = {}
     for (let index = 0; index < file.length; index++) {
-        // if (file[index].search(/\b\d{5}[A-Z]\b/) !== -1) {
-        if (file[index].search(/1\s\d{5}[\sU]/) !== -1) {
+        if (file[index].search(/1\s\d{5}/) !== -1) {
             // Get tle data
             let line1 = file[index]
             let line2 = file[index+1]
@@ -10822,6 +10821,7 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         }).join('')}
         </div>
         <div><button onclick="importTleChoices(this)">Import TLE States</button></div>
+        <div><button onclick="importTleChoices(this)">Show TLE History</button></div>
     `
 }
 let j2000Window

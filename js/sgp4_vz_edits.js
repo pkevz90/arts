@@ -2468,10 +2468,10 @@ class TLE
         if(this.parseErrors != null) return;
         
         let line1split = line1.split(/ {1,}/).filter(s => s.length > 0)
-        
-        if (line1split[3].search('.') === -1) {
-            // No international indctr given, add space so numbers work out
-            line1split.splice(2,0,'')
+      
+        if (line1split[2].search(/\d{1,5}\.\d/) !== -1) {
+            // No international indctr given, add generic so numbers work out
+            line1split.splice(2,0,'00000A')
         }
         let line2split = line2.split(/ {1,}/).filter(s => s.length > 0)
         console.log(line1split, line2split);
