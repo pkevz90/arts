@@ -2474,7 +2474,7 @@ class TLE
             line1split.splice(2,0,'00000A')
         }
         let line2split = line2.split(/ {1,}/).filter(s => s.length > 0)
-        console.log(line1split, line2split);
+        // console.log(line1split, line2split);
         this.objectID = line1split[1].slice(0,5);
         
         // while(this.objectID.startsWith('0')) this.objectID = this.objectID.substring(1);
@@ -2494,7 +2494,7 @@ class TLE
         
         this.bstar = line1split[6].split(/[\+|-]/);
         // this.bstar = line1split[6].split(/[^-][\+|-]/);
-        console.log(this.bstar);
+        // console.log(this.bstar);
         pos = line1split[6].search('-') === -1
         if (this.bstar.length === 3) {
             this.bstar = -1*Number('.' + this.bstar[1]+'e'+(pos ? '+' : '-')+this.bstar[2])
@@ -2502,7 +2502,7 @@ class TLE
         else {
             this.bstar = Number('.'+this.bstar[0]+'e'+(pos ? '+' : '-')+this.bstar[1])
         }
-        console.log(this.bstar);
+        // console.log(this.bstar);
         
         
         this.incDeg =  Number(line2split[2])
@@ -2552,7 +2552,7 @@ class TLE
     parseEpoch(str)
     {
         var year = parseInt(str.substring(0,2).trim());
-        console.log(year);
+        // console.log(year);
         this.rec.epochyr=year;
         if(year > 56)
         {
@@ -2562,11 +2562,11 @@ class TLE
         {
             year += 2000;
         }
-        console.log(year);
+        // console.log(year);
         
         var doy = parseInt(str.substring(2,5).trim());
         var dfrac = parseFloat("0"+str.substring(5).trim());
-        console.log(doy, dfrac);
+        // console.log(doy, dfrac);
         this.rec.epochdays = doy;
         this.rec.epochdays += dfrac;
         
@@ -2596,9 +2596,9 @@ class TLE
         }
         mon = ind+1;
         day = doy;
-        console.log(year, mon, day, hr, mn, sec);
+        // console.log(year, mon, day, hr, mn, sec);
         var jd = this.SGP4.jday(year, mon, day, hr, mn, sec);
-        console.log(jd);
+        // console.log(jd);
         this.rec.jdsatepoch = jd[0];
         this.rec.jdsatepochF = jd[1];
 

@@ -10684,23 +10684,26 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         mainWindow.ephemViewerMode = true
         let satellites = []
         let els = el.parentElement.parentElement.querySelectorAll('.tle-sat-div')
+        let startTime = new Date(el.parentElement.parentElement.querySelector('#tle-history-start').value)
+        let endTime = new Date(el.parentElement.parentElement.querySelector('#tle-history-end').value)
         for (let index = 0; index < els.length; index++) {
             if (! importCheckboxes[index]) continue
             let name = importNames[index]
             let tleOptions = [...els[index].querySelectorAll('.tle-option-div')].map(d => {
-                return new TLE(d.getAttribute('line1'), d.getAttribute('line2'))
+                let tle = new TLE(d.getAttribute('line1'), d.getAttribute('line2'))
+                return [tle.epoch, tle]
             })
             satellites.push({
                 color: importColors[index],
                 origin: index === origin,
                 shape: importShapes[index],
                 name, 
-                tleOptions,
-                state: []
+                state: tleOptions
+                // state: []
             })
         }
-        let startTime = new Date(el.parentElement.parentElement.querySelector('#tle-history-start').value)
-        let endTime = new Date(el.parentElement.parentElement.querySelector('#tle-history-end').value)
+        loadEphemFileInViewer(satellites, {maxPoints, startTime, endTime})
+        return
         let delta = (endTime-startTime)/1000
         if (delta < 0) return
         let dt = delta/20, time = 0
@@ -12048,6 +12051,12 @@ function loadEphemFileInViewer(satellites, options = {}) {
     let stateFromArray = function(inArray, time) {
         let minTime = inArray.filter(s => s[0] <= time)
         minTime = minTime.length === 0 ? inArray[0] : inArray[minTime.length-1]
+        // Check if a TLE, if so, use SGP4
+        if (minTime[1].epoch !== undefined) { 
+            let rv = minTime[1].getRVForDate(time)
+            rv = astro.teme2eci(rv[0], rv[1], time)
+            return rv
+        }
         return propToTime(minTime.slice(1), (time-minTime[0])/1000)
     }
     let {km = true, startTime, endTime, maxPoints} = options
@@ -12056,11 +12065,19 @@ function loadEphemFileInViewer(satellites, options = {}) {
     let originSat = satellites.findIndex(s => s.origin)
     originSat = originSat === -1 ? 0 : originSat
     let startOrbit = satellites[originSat].state[0].slice(1)
+    console.log(startOrbit[0]);
+    if (startOrbit[0].epoch !== undefined) {
+        console.log(startOrbit[0]);
+        startOrbit = startOrbit[0].getRV(0)
+        console.log(startOrbit);
+        startOrbit = [...startOrbit[0], ...startOrbit[1]]
+    }
     startOrbit = PosVel2CoeNew(startOrbit.slice(0,3), startOrbit.slice(3))
     let startPeriod = 2*Math.PI*(startOrbit.a**3/398600.4418)**0.5
 
-    let startEpoch = satellites[originSat].state[0][0]
-    let endEpoch = satellites[originSat].state[satellites[originSat].state.length-1][0]
+    let startEpoch = startTime || satellites[originSat].state[0][0]
+    let endEpoch = endTime || satellites[originSat].state[satellites[originSat].state.length-1][0]
+    console.log(startEpoch, endEpoch);
     let viewLength = (endEpoch-startEpoch)/1000
     let satStates = satellites.map(sat => {
         let stateHistory = []
