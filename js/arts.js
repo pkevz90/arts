@@ -1,6 +1,6 @@
-let appAcr = 'ROTS 3.0'
+let appAcr = 'ROTS 3.1'
 let appName = 'Relative Orbital Trajectory System'
-let cao = '4 Dec 2023'
+let cao = '7 Jan 2023'
 document.title = appAcr
 // Various housekeepin to not change html
 document.getElementById('add-satellite-panel').getElementsByTagName('span')[0].classList.add('ctrl-switch');
@@ -8300,6 +8300,7 @@ function handleTleFile(file) {
             // Get tle data
             let line1 = file[index]
             let line2 = file[index+1]
+            console.log(line1, line2);
             let threeLEname
             if (index !== 0) {
                 if (file[index-1][0] !== '2') {
@@ -8317,12 +8318,12 @@ function handleTleFile(file) {
             tleRawStates.push(sat)
             // Check if tle already uploaded, if so see if tle from past
             let otherSat = tleState.findIndex(el => el.name === sat.name)
+            index++
             if (otherSat !== -1) {
                 if (tleState[otherSat].epoch < sat.epoch) tleState.splice(otherSat,1,sat)
                 continue
             }
             tleState.push(sat)
-            index++
         }
         
     }
@@ -8778,36 +8779,40 @@ function draw3dScene(az = azD, el = elD) {
         type: 'circle'
     })
     // Earth
-    let earthPosition = math.multiply(r, curEarth)
-    let earthPixelRadius = 6371*mainWindow.cnvs.width/mainWindow.plotWidth
-    let earthIllum = astro.moonPhaseFromAngle(viewPosition, earthPosition, sunPos)
-    let relEarthSun = math.subtract(sunPos, earthPosition)
-    relEarthSun = math.atan2(relEarthSun[1], relEarthSun[0])
-    points.push({
-        color: earthIllum > 0.5 ? '#002233' : '#224455',
-        position: earthPosition,
-        size: earthPixelRadius*2,
-        text: mainWindow.primaryBody,
-        textColor: mainWindow.colors.primaryBody,
-        type: 'circle'
-    },
-    {
-        color: earthIllum > 0.5 ? '#224455' : '#002233',
-        position: earthPosition,
-        size: earthPixelRadius*2,
-        b: earthPixelRadius,
-        type: 'ellipse',
-        start: 0,
-        end: Math.PI,
-        angle:  earthIllum > 0.5 ? (relEarthSun) + Math.PI : (relEarthSun)
-    },{
-        color: earthIllum > 0.5 ? '#224455' : '#002233',
-        position: earthPosition,
-        size: earthPixelRadius*2,
-        type: 'ellipse',
-        angle: relEarthSun-Math.PI/2,
-        b: ((earthIllum > 0.5 ? earthIllum : 1 - earthIllum)-0.5)/0.5*earthPixelRadius
-    })
+    // If rOrigin less than 25000 km, don't draw earth at this time
+    if (rOriginEci > 25000) {
+        let earthPosition = math.multiply(r, curEarth)
+        let earthPixelRadius = 6371*mainWindow.cnvs.width/mainWindow.plotWidth
+        let earthIllum = astro.moonPhaseFromAngle(viewPosition, earthPosition, sunPos)
+        let relEarthSun = math.subtract(sunPos, earthPosition)
+        relEarthSun = math.atan2(relEarthSun[1], relEarthSun[0])
+        points.push({
+            color: earthIllum > 0.5 ? '#002233' : '#224455',
+            position: earthPosition,
+            size: earthPixelRadius*2,
+            text: mainWindow.primaryBody,
+            textColor: mainWindow.colors.primaryBody,
+            type: 'circle'
+        },
+        {
+            color: earthIllum > 0.5 ? '#224455' : '#002233',
+            position: earthPosition,
+            size: earthPixelRadius*2,
+            b: earthPixelRadius,
+            type: 'ellipse',
+            start: 0,
+            end: Math.PI,
+            angle:  earthIllum > 0.5 ? (relEarthSun) + Math.PI : (relEarthSun)
+        },{
+            color: earthIllum > 0.5 ? '#224455' : '#002233',
+            position: earthPosition,
+            size: earthPixelRadius*2,
+            type: 'ellipse',
+            angle: relEarthSun-Math.PI/2,
+            b: ((earthIllum > 0.5 ? earthIllum : 1 - earthIllum)-0.5)/0.5*earthPixelRadius
+        })
+    }
+    
     let moonPosition = math.multiply(r, curMoonLocation)
     let moonPixelRadius = 1737.4*mainWindow.cnvs.width/mainWindow.plotWidth
     let moonIllum = astro.moonPhaseFromAngle(viewPosition, moonPosition, sunPos)
@@ -10605,8 +10610,6 @@ function openTleWindow(tleSatellites, tleNames = {}) {
             let line1 = option.getAttribute('line1')
             let line2 = option.getAttribute('line2')
             let tle = new TLE(line1, line2)
-            console.log(tle);
-            console.log(tle.epoch, importTime);
             let rv = tle.getRVForDate(importTime)
             // rv = [...math.multiply(astro.rot(0.3, 3), rv[0]), ...math.multiply(astro.rot(0.3, 3), rv[1])]
             rv = astro.teme2eci(rv[0], rv[1], importTime)
@@ -10664,92 +10667,56 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         })
     }
     tleWindow.importTlesAsViewer = (el) => {
-        function Eccentric2True(e,E) {
-            return Math.atan(Math.sqrt((1+e)/(1-e))*Math.tan(E/2))*2;
-        }
-        function solveKeplersEquation(M,e) {
-            let E = M;
-            let del = 1;
-            while (Math.abs(del) > 1e-6) {
-                del = (E-e*Math.sin(E)-M)/(1-e*Math.cos(E));
-                E -= del;
-            }
-            return E;
-        }
-        let satellites = []
-        let els = el.parentElement.parentElement.querySelectorAll('.tle-sat-div')
-        for (let index = 0; index < els.length; index++) {
-            let name = els[index].querySelector('.sat-name-span').innerText
-            let tleOptions = els[index].querySelectorAll('.tle-option-div')
-            tleOptions = [...tleOptions]
-            let state = tleOptions.map(opt => opt.getAttribute('orbit').split('x').map(s => Number(s)))
-            state = state.map(st => {
-                let coe = {
-                    a: st[0],
-                    e: st[1],
-                    i: st[2],
-                    raan: st[3],
-                    arg: st[4],
-                    tA: Eccentric2True(st[1], solveKeplersEquation(st[5], st[1]))
-                }
-                return Object.values(Coe2PosVelObject(coe))
-            })
-            let epochs = tleOptions.map(opt => new Date(opt.querySelector('.tle-epoch').innerText))
-            satellites.push({
-                name,
-                states: state.map((st, ii) => [epochs[ii], st]).sort((a,b) => a[0]-b[0]),
-                stateHistory: [],
-                origin: false
-            })
-        }
-        let startTimeCoe = math.min(satellites.map(s => s.states[0][0].getTime()))
-        for (let t = 0; t < 172800; t+=1800) {
-            let epochTime = new Date(startTimeCoe - (-1000*t))
-            for (let sat = 0; sat < satellites.length; sat++) {
-                let closestState = [satellites[sat].states[0], ...satellites[sat].states.filter(st => st[0] < epochTime)]
-                closestState = closestState[closestState.length-1];
-                satellites[sat].stateHistory.push([
-                    epochTime,
-                    ...propToTime(closestState[1], (epochTime-closestState[0])/1000)
-                ])
-            }
-        }
         let importCheckboxes = [...tleWindow.document.querySelectorAll('.import-checkbox')].map(s => s.checked)
-        let importColors = [...tleWindow.document.querySelectorAll('.import-color')].map((s, nameIi) => {
-            let val = s.value
-            satellites[nameIi].color = val
-        })
-        let importShapes = [...tleWindow.document.querySelectorAll('.import-shape')].map((s, nameIi) => {
-            let val = s.value
-            satellites[nameIi].shape = val
-        })
-        let importNames = [...tleWindow.document.querySelectorAll('.import-name-input')].map((s, nameIi) => {
-            let val = s.value
-            console.log(nameIi);
-            if (val.length > 0) {
-                satellites[nameIi].name = val + '-' + satellites[nameIi].name
-            }
-        })
+        let importColors = [...tleWindow.document.querySelectorAll('.import-color')].map(s => s.value)
+        let importShapes = [...tleWindow.document.querySelectorAll('.import-shape')].map(s => s.value)
+        let importNames = [...tleWindow.document.querySelectorAll('.import-name-input')].map(s => s.value)
         let originRadio = [...tleWindow.document.querySelectorAll('.import-radio')].map(s => s.checked)
         originRadio = originRadio.filter((s, filterIi) => importCheckboxes[filterIi])
         if (originRadio.filter(s => s).length === 0) {
             originRadio[0] = true
         }
+        let maxPoints = tleWindow.document.querySelector('#max-num-points-tle')
+        maxPoints = maxPoints.value === '' ? maxPoints.placeholder : maxPoints.value
+        maxPoints = Number(maxPoints)
+        console.log(maxPoints);
         let origin = originRadio.findIndex(s => s)
-        satellites[origin].origin = true
-        satellites = satellites.filter((s, filterIi) => importCheckboxes[filterIi])
-        for (let index = 0; index < satellites.length; index++) {
-            satellites[index].state = satellites[index].stateHistory
-        }
-        console.log(satellites);
         mainWindow.ephemViewerMode = true
-        loadEphemFileInViewer(satellites)
-        // importStates(states, importTime, {
-        //     names: importNames,
-        //     shapes: importShapes,
-        //     colors: importColors,
-        //     origin
-        // })
+        let satellites = []
+        let els = el.parentElement.parentElement.querySelectorAll('.tle-sat-div')
+        for (let index = 0; index < els.length; index++) {
+            if (! importCheckboxes[index]) continue
+            let name = importNames[index]
+            let tleOptions = [...els[index].querySelectorAll('.tle-option-div')].map(d => {
+                return new TLE(d.getAttribute('line1'), d.getAttribute('line2'))
+            })
+            satellites.push({
+                color: importColors[index],
+                origin: index === origin,
+                shape: importShapes[index],
+                name, 
+                tleOptions,
+                state: []
+            })
+        }
+        let startTime = new Date(el.parentElement.parentElement.querySelector('#tle-history-start').value)
+        let endTime = new Date(el.parentElement.parentElement.querySelector('#tle-history-end').value)
+        let delta = (endTime-startTime)/1000
+        if (delta < 0) return
+        let dt = delta/20, time = 0
+        while (time < delta) {
+            let curTime = new Date(startTime - (-1000*time))
+            curTime.setSeconds(0,0)
+            satellites.forEach(sat => {
+                let curTle = [sat.tleOptions[0], ...sat.tleOptions.filter(s => s.epoch < curTime)]
+                curTle = curTle[curTle.length-1]
+                let rv = curTle.getRVForDate(curTime)
+                rv = astro.teme2eci(rv[0], rv[1], curTime)
+                sat.state.push([curTime, ...rv])
+            })  
+            time += dt
+        }
+        loadEphemFileInViewer(satellites, {maxPoints})
     }
     tleWindow.changeImportTime = (el) => {
         let importDate = new Date(el.value)
@@ -10760,13 +10727,17 @@ function openTleWindow(tleSatellites, tleNames = {}) {
                 tleOpt[index].querySelector('input').checked = false
             }
             let times = tleOpt.map(s => {
-                return new Date(s.querySelector('span').innerText)
+                return new Date(s.querySelector('label').innerText)
             })
             if (times.length === 1) {
                 tleOpt[0].querySelector('input').checked = true
             }
             else {
                 let index = times.findIndex(s => s > importDate)
+                if (index === 0) {
+                    tleOpt[0].querySelector('input').checked = true
+                    return
+                }
                 tleOpt[index !== -1 ? index - 1 : tleOpt.length - 1].querySelector('input').checked = true
             }
         })
@@ -10780,8 +10751,11 @@ function openTleWindow(tleSatellites, tleNames = {}) {
     }
     let uniqueSats = tleSatellites.filter((element, index, array) => array.findIndex(el => el.name === element.name) === index).map(sat => sat.name)
     tleWindow.tleSatellites = tleSatellites
-    let importEpoch = tleSatellites[0].epoch
-    importEpoch = new Date(importEpoch.getFullYear(), importEpoch.getMonth(), importEpoch.getDate(), importEpoch.getHours())
+    let earliestEpoch = new Date(math.min(tleSatellites.map(s => new Date(s.epoch) - (-0))))
+    let latestEpoch = new Date(math.max(tleSatellites.map(s => new Date(s.epoch) - (-0))))
+    let importEpoch = new Date(earliestEpoch.getFullYear(), earliestEpoch.getMonth(), earliestEpoch.getDate(), earliestEpoch.getHours())
+    earliestEpoch = convertTimeToDateTimeInput(earliestEpoch)
+    latestEpoch = convertTimeToDateTimeInput(new Date(latestEpoch - (-12*3600000)))
     let defaultEpoch = convertTimeToDateTimeInput(importEpoch)
     tleWindow.document.body.innerHTML = `
         <div style="text-align: center; font-size: 2em; margin-bottom: 10px; width: 100%;">ARTS TLE Import Tool</div>
@@ -10800,8 +10774,8 @@ function openTleWindow(tleSatellites, tleNames = {}) {
             }
             let outHt = `<div class="tle-sat-div" style="margin-bottom: 10px;"><div class="import-name">
                 <input title="Select origin of the initial RIC frame displayed" name="coe-origin" class="import-radio" type="radio" ${satIi === 0 ? 'checked' : ''}/>
-                <input class="import-checkbox" type="checkbox" checked/>
-                <span class="sat-name-span">${satName}</span>
+                <input class="import-checkbox" id="checkbox-sat-${satIi}" type="checkbox" checked/>
+                <label for="checkbox-sat-${satIi}" class="sat-name-span">${satName}</label>
                 <input value="${existingColor}" class="import-color" style="height: 20px;" type="color" value="${existingColor}"/>
                 <input value="${existingName}" class="import-name-input" style="width: 15ch;" type="text" placeholder="Name"/>
                 <select class="import-shape" class="import-shape">   
@@ -10814,14 +10788,19 @@ function openTleWindow(tleSatellites, tleNames = {}) {
                 </select>
             </div>`
             tleSatellites.filter(sat => sat.name === satName).sort((a,b)=>a.epoch-b.epoch).forEach((matchSat, ii, arr) => {
-                outHt += `<div class="tle-option-div" line1="${matchSat.line1}" line2="${matchSat.line2}" style="margin-left: 20px"><input ${ii === 0 ? 'checked' : ''} name="${matchSat.name}-tle-radio" type="radio"/><span class="tle-epoch">${toStkFormat(matchSat.epoch.toString())}</span></div>`
+                outHt += `<div class="tle-option-div" line1="${matchSat.line1}" line2="${matchSat.line2}" style="margin-left: 20px"><input id="sat-${satIi}-${ii}" ${ii === 0 ? 'checked' : ''} name="${matchSat.name}-tle-radio" type="radio"/><label style="cursor: pointer" for="sat-${satIi}-${ii}" class="tle-epoch">${toStkFormat(matchSat.epoch.toString())}</label></div>`
             })
             outHt += '</div>'
             return outHt
         }).join('')}
         </div>
         <div><button onclick="importTleChoices(this)">Import TLE States</button></div>
-        <div><button onclick="importTleChoices(this)">Show TLE History</button></div>
+        <div><button onclick="importTlesAsViewer(this)">Show TLE History</button></div>
+        <div style="margin-left: 20px;">
+        <div>Start History <input id="tle-history-start" type="datetime-local" value=${earliestEpoch}></div>
+        <div>End History <input id="tle-history-end" type="datetime-local" value=${latestEpoch}></div>
+        <div>Max # Points <input id="max-num-points-tle" type="Number" placeholder="1000" style="width: 8ch;"/>
+        </div>
     `
 }
 let j2000Window
@@ -12066,13 +12045,12 @@ function testCodeTime(sat = 0) {
 }
 
 function loadEphemFileInViewer(satellites, options = {}) {
-    console.log(satellites);
     let stateFromArray = function(inArray, time) {
         let minTime = inArray.filter(s => s[0] <= time)
         minTime = minTime.length === 0 ? inArray[0] : inArray[minTime.length-1]
         return propToTime(minTime.slice(1), (time-minTime[0])/1000)
     }
-    let {km = true} = options
+    let {km = true, startTime, endTime, maxPoints} = options
     // console.log(stateFromArray(satellites[0].state, new Date(satellites[0].state[0][0] - (-20000*1000))))
     mainWindow.satellites = []
     let originSat = satellites.findIndex(s => s.origin)
@@ -12087,13 +12065,19 @@ function loadEphemFileInViewer(satellites, options = {}) {
     let satStates = satellites.map(sat => {
         let stateHistory = []
         let t = 0
+        let dt = startPeriod / 80
+        // console.log(maxPoints, viewLength, dt, viewLength / dt, (viewLength / dt) > maxPoints);
+        if ((viewLength / dt) > maxPoints) {
+            dt = viewLength / maxPoints
+            // console.log(dt);
+        }
         while (t < viewLength) {
             let viewDate = new Date(startEpoch - (-1000*t))
             let state = stateFromArray(sat.state, viewDate)
             stateHistory.push({
                 t, position: state
             })
-            t += startPeriod / 80
+            t += dt
         }
         return stateHistory
 
