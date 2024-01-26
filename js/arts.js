@@ -1830,6 +1830,10 @@ class GroundSite {
         this.name = name
         this.limits = limits
         this.type = type
+        this.noise = {
+            angle: 0.01,
+            range: 0.01
+        }
     }
     checkLimits = (satEci = Object.values(getCurrentInertial(0)).slice(0,3), date = new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)), sunPosEci, moonPosEci) => {
         let canSeeSat = true
@@ -1945,6 +1949,7 @@ let timeFunction = false;
         if (timeFunction) console.time()
         mainWindow.clear();
         mainWindow.updateSettings();
+        if (math.abs(mainWindow.playTimeStep) > 0) updateContextMenu()
         if (mainWindow.polarPlotMode) {
             mainWindow.drawPolarPlot()
             mainWindow.showTime();
@@ -1974,7 +1979,6 @@ let timeFunction = false;
             mainWindow.showTime();
             mainWindow.showData();
             if (timeFunction) console.timeEnd()
-            
             mainWindow.changeTime(mainWindow.desired.scenarioTime + mainWindow.playTimeStep, true)
             return requestAnimationFrame(animationLoop)
         }
@@ -2541,6 +2545,7 @@ function sliderFunction(slider) {
     let timeDelta = Number(slider.value) - mainWindow.desired.scenarioTime
     mainWindow.desired.scenarioTime += timeDelta
     updateWhiteCellTimeAndErrors()
+    updateContextMenu()
     if (monteCarloData !== null) {
         // console.log('hey');
         let td = mainWindow.desired.scenarioTime - monteCarloData.time
@@ -2631,6 +2636,16 @@ function wheelFunction(event) {
 
     if(mainWindow.latLongMode) {
         
+        let latLong = mainWindow.pixel2LatLong(mainWindow.mousePosition)
+        let newLat = latLong.lat
+        let newLong = latLong.long
+        let oldLat = mainWindow.groundTrackLimits.latCenter
+        let oldlong = mainWindow.groundTrackLimits.center
+        newLat = (newLat-oldLat)*0.1+oldLat
+        newLong = (newLong-oldlong)*0.1+oldlong
+        console.log(event.deltaY);
+        mainWindow.groundTrackLimits.center = event.deltaY < 0 ? newLong : oldlong
+        mainWindow.groundTrackLimits.latCenter = event.deltaY < 0 ? newLat : oldLat
         if (math.abs(event.deltaY) < 1) return
         let newZoom = mainWindow.groundTrackLimits.zoom *( event.deltaY > 0 ? 1/1.1 : 1.1)
         newZoom = newZoom < 1 ? 1 : newZoom 
@@ -2732,6 +2747,65 @@ function generateBurnContextMenu(satIndex = 0,burnIndex = 0, alt = false, shift 
     }
     navigator.clipboard.writeText(outText)
     return outHtml
+}
+
+function updateContextMenu() {
+    let menu = document.getElementById('context-menu')
+    if (menu === null) return
+
+    menu.style.left = '1px'
+    let contextItems = [...menu.querySelectorAll('.context-item')].forEach(it => {
+        it.style.display = 'none'
+    });
+    contextItems = [...menu.querySelectorAll('input')].forEach(it => {
+        it.style.display = 'none'
+    });
+    contextItems = [...menu.querySelectorAll('button')].forEach(it => {
+        it.style.display = 'none'
+    });
+    contextItems = [...menu.querySelectorAll('select')].forEach(it => {
+        it.style.display = 'none'
+    });
+    let angMenu = document.querySelector('#context-angle-position')
+    let ricMenu = document.querySelector('#context-ric-position')
+    let groundMenu = document.querySelector('#context-ground-position')
+    let activeSat = menu.sat
+    let ricPosition = mainWindow.satellites[activeSat].curPos
+    let eciPosition = Object.values(getCurrentInertial(activeSat))
+    let eciOriginPosition = Object.values(getCurrentInertialRic([0,0,0]))
+    let coePosition = astro.j20002Coe(eciPosition)
+    let coeOriginPosition = astro.j20002Coe(eciOriginPosition)
+    let drift = -((398600.4418/coeOriginPosition.a**3)**0.5) + (398600.4418/coePosition.a**3)**0.5
+    let originPeriod = 2*Math.PI*(coeOriginPosition.a**3/398600.4418)**0.5
+    drift *= originPeriod*180/Math.PI
+
+    let originAng = coeOriginPosition.raan+coeOriginPosition.i+coeOriginPosition.arg+coeOriginPosition.tA
+    originAng = (originAng % (2*Math.PI))*180/Math.PI
+    let positionAng = coePosition.raan+coePosition.i+coePosition.arg+coePosition.tA
+    positionAng = (positionAng % (2*Math.PI))*180/Math.PI
+    let angDiff = positionAng-originAng
+    let arrowDisplay = math.abs(drift) < 1e-3 ? '' : drift < 0 ? '&darr;' : '&uarr;'
+    let planeDiff = math.cos(coePosition.i)*math.cos(coeOriginPosition.i)+math.sin(coePosition.i)*math.sin(coeOriginPosition.i)*math.cos(coeOriginPosition.raan-coePosition.raan)
+    planeDiff = math.acos(planeDiff)*180/Math.PI
+
+    angDiff = math.abs(angDiff) < 1e-3 ? 0 : angDiff
+    drift = math.abs(drift) < 1e-3 ? 0 : drift
+
+    // Determine if positive or negative
+    let groundPosition = astro.eci2latlong(eciPosition.slice(0,3), new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
+    let lat = groundPosition.lat*180/Math.PI, long = groundPosition.long*180/Math.PI
+    while (long > 360) {
+        long -= 360
+    }
+    while (long < 0) {
+        long += 360
+    }
+    let eastWest = long > 180 ? 'W' : 'E'
+    long = long > 180 ? -(long-360) : long
+    groundPosition = `Lat: ${(lat).toFixed(2)}<sup>o</sup>, Long: ${(long).toFixed(2)+eastWest}<sup>o</sup>, <abbr title="Distance to Earth's Center">R</abbr>: ${math.norm(groundPosition.r_ecef).toFixed(1)} km`
+    angMenu.innerHTML = `&Delta; = ${arrowDisplay+angDiff.toFixed(2)}<sup>o</sup> <span style ="margin-left: 5px;">Drift = ${drift.toFixed(2)}<sup>o</sup>/rev</span> <span style ="margin-left: 5px;">&Delta;Plane = ${planeDiff.toFixed(2)}<sup>o</sup></span>`
+    groundMenu.innerHTML = groundPosition
+    ricMenu.innerHTML = `${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s`
 }
 
 function startContextClick(event) {
@@ -2891,6 +2965,13 @@ function startContextClick(event) {
             <div site="${activeSite}" class="context-item" onclick="handleContextClick(this)" id="launch-options">Launch Options</div>
             <div site="${activeSite}" class="context-item" onclick="handleContextClick(this)" id="delete-site">Delete Site</div>
             <div style="font-size: 0.75em; margin-top: 5px; padding: 5px 15px; color: white; cursor: default;">
+                <select title="Edit Satellite Type" element="site-type" style="font-size: 0.85em; width: 12ch; border: 1px solid white; color: white; background-color: black">
+                    <option value="radar">Radar</option>
+                    <option value="optical">Optical</option>
+                    <option value="signal">Optical</option>
+                </select>
+            </div>
+            <div style="font-size: 0.75em; margin-top: 5px; padding: 5px 15px; color: white; cursor: default;">
                 Lat: ${lat.toFixed(2)} Long: ${long.toFixed(2)}
             </div>
             <div>
@@ -2936,7 +3017,27 @@ function startContextClick(event) {
         // User clicked on satellite, generate satellite option menu
         ctxMenu.sat = activeSat;
         let ricPosition = mainWindow.satellites[activeSat].curPos
-        let groundPosition = astro.eci2latlong(Object.values(getCurrentInertial(activeSat)).slice(0,3), new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
+        let eciPosition = Object.values(getCurrentInertial(activeSat))
+        let eciOriginPosition = Object.values(getCurrentInertialRic([0,0,0]))
+        let coePosition = astro.j20002Coe(eciPosition)
+        let coeOriginPosition = astro.j20002Coe(eciOriginPosition)
+        let drift = -((398600.4418/coeOriginPosition.a**3)**0.5) + (398600.4418/coePosition.a**3)**0.5
+        let originPeriod = 2*Math.PI*(coeOriginPosition.a**3/398600.4418)**0.5
+        drift *= originPeriod*180/Math.PI
+
+        let originAng = coeOriginPosition.raan+coeOriginPosition.i+coeOriginPosition.arg+coeOriginPosition.tA
+        originAng = (originAng % (2*Math.PI))*180/Math.PI
+        let positionAng = coePosition.raan+coePosition.i+coePosition.arg+coePosition.tA
+        positionAng = (positionAng % (2*Math.PI))*180/Math.PI
+        let angDiff = positionAng-originAng
+        let arrowDisplay = math.abs(drift) < 1e-3 ? '' : drift < 0 ? '&darr;' : '&uarr;'
+        let planeDiff = math.cos(coePosition.i)*math.cos(coeOriginPosition.i)+math.sin(coePosition.i)*math.sin(coeOriginPosition.i)*math.cos(coeOriginPosition.raan-coePosition.raan)
+        planeDiff = math.acos(planeDiff)*180/Math.PI
+
+        drift = math.abs(drift) < 1e-3 ? 0 : drift
+        angDiff = math.abs(angDiff) < 1e-3 ? 0 : angDiff
+        // Determine if positive or negative
+        let groundPosition = astro.eci2latlong(eciPosition.slice(0,3), new Date(mainWindow.startDate - (-1000*mainWindow.scenarioTime)))
         let lat = groundPosition.lat*180/Math.PI, long = groundPosition.long*180/Math.PI
         while (long > 360) {
             long -= 360
@@ -2995,7 +3096,7 @@ function startContextClick(event) {
                     <div style="font-size: 0.4em; padding: 2.5px 15px 0px; margin-top: 5px; color: white; cursor: default;">
                         RIC Position To Origin
                     </div>
-                    <div style="font-size: 0.75em; padding: 0px 15px 1px; color: white; cursor: default;">
+                    <div id="context-ric-position" style="font-size: 0.75em; padding: 0px 15px 1px; color: white; cursor: default;">
                         ${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s
                     </div>
                 `
@@ -3010,7 +3111,7 @@ function startContextClick(event) {
                 <div style="font-size: 0.4em; padding: 2.5px 15px 0px; margin-top: 5px; color: white; cursor: default;">
                 RIC Position To Origin
                 </div>
-                <div style="font-size: 0.75em; padding: 0px 15px 1px; color: white; cursor: default;">
+                <div id="context-ric-position" style="font-size: 0.75em; padding: 0px 15px 1px; color: white; cursor: default;">
                     ${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s
                 </div>
                 `
@@ -3023,9 +3124,15 @@ function startContextClick(event) {
         }
         newInnerHTML += `
             <div style="font-size: 0.4em; padding: 1px 15px 0px; margin-top: 5px; color: white; cursor: default;">
+                Angular Position
+            </div>
+            <div id="context-angle-position" style="margin-top: -4px; font-size: 0.75em; padding: 0px 15px 5px; color: white; cursor: default;">
+                &Delta; = ${arrowDisplay+angDiff.toFixed(2)}<sup>o</sup> <span style ="margin-left: 5px;">Drift = ${drift.toFixed(2)}<sup>o</sup>/rev</span> <span style ="margin-left: 5px;">&Delta;Plane = ${planeDiff.toFixed(2)}<sup>o</sup></span>
+            </div>
+            <div style="font-size: 0.4em; padding: 1px 15px 0px; margin-top: 5px; color: white; cursor: default;">
                 Ground Position
             </div>
-            <div style="margin-top: -4px; font-size: 0.75em; padding: 0px 15px 5px; color: white; cursor: default;">
+            <div id="context-ground-position" style="margin-top: -4px; font-size: 0.75em; padding: 0px 15px 5px; color: white; cursor: default;">
                 ${groundPosition}
             </div>
         `
@@ -8215,7 +8322,8 @@ function uploadTles(event) {
 function tellInputStateFileType(file) {
     // Tells if file is J2000 or TLE file
     let vcmregexp = file.search('POS') !== -1 && file.search('VEL') !== -1 && file.search('COV') !== -1 
-    if (vcmregexp) return 'vcm'
+    if (file.search('ARTSTLELIST') !== -1) return 'tlelist'
+    else if (vcmregexp) return 'vcm'
     else if (file.search(/ -?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d* {1,}-?\d*\.\d*/m) !== -1) return 'j2000'
     else if (file.search(/^1 {1,}\d*.* {1,}\d{5}\./m) !== -1 && file.search(/^2 {1,}\d*/m) !== -1) {
         console.log('tle');
@@ -8300,7 +8408,6 @@ function handleTleFile(file) {
             // Get tle data
             let line1 = file[index]
             let line2 = file[index+1]
-            console.log(line1, line2);
             let threeLEname
             if (index !== 0) {
                 if (file[index-1][0] !== '2') {
@@ -10103,7 +10210,15 @@ function openSensorAccessPanel() {
         <div style="display: flex; justify-content: space-around">
             <div id="site-access-outer-div">
                 <h2>Ground Sites</h2>
-                ${sites.map(si => {
+                ${sites.sort(function (a, b) {
+                    if (a[1] < b[1]) {
+                      return -1;
+                    }
+                    if (a[1] > b[1]) {
+                      return 1;
+                    }
+                    return 0;
+                  }).map(si => {
                     return `
                         <div class="site-access-div" sitename="${si[1]}" siteindex="${si[0]}">
                             <input onchange="satAccessCheckChange(this)" ${access.sites.find(s => s===si[0]) === undefined ? '' : 'checked'} id="${si[1]}-checkbox" type="checkbox" style="display: none;"/>
@@ -10114,7 +10229,15 @@ function openSensorAccessPanel() {
             </div>
             <div id="sat-access-outer-div">
                 <h2>Satellites</h2>
-                ${sats.map(si => {
+                ${sats.sort(function (a, b) {
+                    if (a[1] < b[1]) {
+                      return -1;
+                    }
+                    if (a[1] > b[1]) {
+                      return 1;
+                    }
+                    return 0;
+                  }).map(si => {
                     return `
                         <div class="sat-access-div" satname="${si[1]}" satindex="${si[0]}">
                             <input onchange="satAccessCheckChange(this)" ${access.satellites.find(s => s===si[0]) === undefined ? '' : 'checked'} id="${si[1]}-checkbox" type="checkbox" style="display: none;"/>
@@ -10129,7 +10252,7 @@ function openSensorAccessPanel() {
                 <div><button style="font-size: 3em; padding: 10px 150px;" onclick="closeSensorAccessPanel(this)">Cancel</button></div<
         </div>
     `
-    openQuickWindow(windowHtml)
+    openQuickWindow(windowHtml,{width: '75%', maxHeight: '60%'})
     document.getElementById('context-menu')?.remove();
 }
 
@@ -10666,6 +10789,18 @@ function openTleWindow(tleSatellites, tleNames = {}) {
             scenarioLength
         })
     }
+    tleWindow.toggleTleDisplay = (el) => {
+        let tleDiv = el.parentElement.nextSibling
+        let current = tleDiv.style.display
+        if (current === '') {
+            el.querySelector('span').innerText = 'Show TLE Options'
+            tleDiv.style.display = 'none'
+        }
+        else {
+            el.querySelector('span').innerText = 'Hide TLE Options'
+            tleDiv.style.display = ''
+        }
+    }
     tleWindow.importTlesAsViewer = (el) => {
         let importCheckboxes = [...tleWindow.document.querySelectorAll('.import-checkbox')].map(s => s.checked)
         let importColors = [...tleWindow.document.querySelectorAll('.import-color')].map(s => s.value)
@@ -10679,6 +10814,7 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         let maxPoints = tleWindow.document.querySelector('#max-num-points-tle')
         maxPoints = maxPoints.value === '' ? maxPoints.placeholder : maxPoints.value
         maxPoints = Number(maxPoints)
+        maxPoints = maxPoints < 500 ? 500 : maxPoints
         console.log(maxPoints);
         let origin = originRadio.findIndex(s => s)
         mainWindow.ephemViewerMode = true
@@ -10766,7 +10902,7 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         <div style="width: 100%; text-align: center; margin: 5px;"><button onclick="setToCurrentUtc(this)">Set to Current UTC</button></div>
         <div style="width: 100%; text-align: center; margin: 5px;">Scenario Length <input style="width: 10ch;" type="number" id="tle-import-length" placeholder="default"> hrs</div>
         <div id="import-type-choice-div" style="margin: 10px;"><label for="import-tles-new">Import as new Scenario</label><input checked type="radio" id="import-tles-new" name="tle-import-option"/><label style="margin-left: 20px;" for="import-tles-existing" title="Only import TLE states that do not exist in the scenario currently">Import Added into Existing Scenario</label><input id="import-tles-existing" type="radio" name="tle-import-option"/></div>
-        <div class="no-scroll" style="max-height: 85%; overflow-y: scroll">
+        <div class="no-scroll" style="max-height: 50%; overflow-y: scroll">
         ${uniqueSats.map((satName, satIi) => {
             let existingShape = 'delta', existingColor = '#ff5555', existingName = tleNames[satName] === undefined ? '' : tleNames[satName]
             let existingSat = mainWindow.satellites.findIndex(s => s.name.search(satName) !== -1)
@@ -10789,11 +10925,11 @@ function openTleWindow(tleSatellites, tleNames = {}) {
                     <option ${existingShape === '4-star' ? 'selected' : ''} value="4-star">4-Point Star</option>
                     <option ${existingShape === 'star' ? 'selected' : ''} value="star">5-Point Star</option>
                 </select>
-            </div>`
+            </div><div style="margin-left: 30px;"><button onclick="toggleTleDisplay(this)"><span>Show TLE Options</span> (${tleSatellites.filter(sat => sat.name === satName).length})</button></div><div style="display: none">`
             tleSatellites.filter(sat => sat.name === satName).sort((a,b)=>a.epoch-b.epoch).forEach((matchSat, ii, arr) => {
                 outHt += `<div class="tle-option-div" line1="${matchSat.line1}" line2="${matchSat.line2}" style="margin-left: 20px"><input id="sat-${satIi}-${ii}" ${ii === 0 ? 'checked' : ''} name="${matchSat.name}-tle-radio" type="radio"/><label style="cursor: pointer" for="sat-${satIi}-${ii}" class="tle-epoch">${toStkFormat(matchSat.epoch.toString())}</label></div>`
             })
-            outHt += '</div>'
+            outHt += '</div></div>'
             return outHt
         }).join('')}
         </div>
@@ -11903,6 +12039,7 @@ function handleImportTextFile(inText) {
     if (objectFromText === undefined) {
         let fileType = tellInputStateFileType(inText)
         console.log(fileType);
+        if (fileType === 'tlelist') return handleTleList(inText)
         if (fileType === 'cvm') return handleVcmFile(inText)
         if (fileType === 'j2000') return handleStkJ200File(inText)
         if (fileType === 'ecilist') return handleEciList(inText)
@@ -11914,6 +12051,15 @@ function handleImportTextFile(inText) {
     else {
         mainWindow.loadData(objectFromText)
     }
+}
+
+function handleTleList(inText) {
+    inText = inText.split('\n')
+    inText = inText.slice(1).map(s => Number(s)).filter(s => !isNaN(s)).filter(s => s > 0)
+
+    // Check if function exists to retrieve TLEs
+    if (typeof retrieveTle !== 'function') return showScreenAlert('TLE retrieval not functioning')
+    importTle(inText.join(','))
 }
 
 function handleVcmFile(inText) {
