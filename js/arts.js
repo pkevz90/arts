@@ -2943,6 +2943,7 @@ function startContextClick(event) {
             <div><input style="cursor: pointer;" ${undefined !== dataCurrent.find(s => s === 'moonAngle') ? 'checked' : ''} id="moonAngle" type="checkbox"/> <label style="cursor: pointer" for="moonAngle">CATM</label></div>
             <div><input style="cursor: pointer;" ${undefined !== dataCurrent.find(s => s === 'interceptData') ? 'checked' : ''} id="interceptData" type="checkbox"/> <label style="cursor: pointer" for="interceptData"><input placeholder="${intTime}" type="number" class="intercept-time-input" style="width: 4em; font-size: 22px;"/>-hr Intercept</label></div>
             <div onclick="changeData(this)" style="border: 1px solid black; border-radius: 10px; margin-top: 5px; cursor: pointer; width: 100%; text-align: center;" origin="${origin}" target="${target}">Confirm</div>
+            <div onclick="exportCsvData(this)" style="border: 1px solid black; border-radius: 10px; margin-top: 5px; cursor: pointer; width: 100%; text-align: center;" origin="${origin}" target="${target}">Export Data</div>
         <div>
         `
     }
@@ -3182,6 +3183,20 @@ function startContextClick(event) {
     }
     setTimeout(() => ctxMenu.style.transform = 'scale(1)', 10);
     return false;
+}
+function exportCsvData(el) {
+    let origin = el.getAttribute('origin')
+    let target = el.getAttribute('target')
+    let output = `${mainWindow.satellites[origin].name} to ${mainWindow.satellites[target].name}\nTime,Range (km), Range Rate (m/s),CATS (deg),CATM (deg), RIC Pos X [km], RIC Pos Y [km], RIC Pos Z [km], RIC Vel X [km/s], RIC Vel Y [km/s], RIC Vel Z [km/s]`
+    for (let time = 0; time < mainWindow.scenarioLength*3600; time+=300) {
+        let curTime = new Date(mainWindow.startDate - (-1000*time))
+        let originState = Object.values(getCurrentInertial(origin, time))
+        let targetState = Object.values(getCurrentInertial(target, time))
+        let relData = getRelativeDataFromState(originState, targetState, curTime)
+        output += `\n${curTime.getMonth()+1}/${curTime.getDate()}/${curTime.getFullYear()} ${curTime.getHours()}:${curTime.getMinutes()}:${curTime.getSeconds()}.${curTime.getMilliseconds()},${relData.range},${relData.rangeRate}, ${mainWindow.zeroCatsGood ? 180-relData.sunAngle : relData.sunAngle}, ${mainWindow.zeroCatsGood ? 180-relData.moonAngle : relData.moonAngle}, ${relData.position[0]}, ${relData.position[1]}, ${relData.position[2]}, ${relData.velocity[0]}, ${relData.velocity[1]}, ${relData.velocity[2]}`
+    }
+    downloadFile('DataHistory.csv', output)
+    document.getElementById('context-menu')?.remove();
 }
 
 function changeData(el) {
@@ -6494,6 +6509,63 @@ function getRelativeData(n_target, n_origin, intercept = true, intTime = 1) {
         ricVel,
         relativeVelocity: math.norm(relVel)*1000,
         interceptData
+    }
+}
+
+function getRelativeDataFromState(pos1,pos2, currentTime) {
+    let sunAngle, moonAngle, rangeRate, range, poca, toca, tanRate, rangeStd, relPos, relVel, relPosHis, interceptData, ricVel, velocity;
+    try {
+        let relState = math.subtract(pos1, pos2)
+        relPos = relState.slice(0,3)
+        relVel = relState.slice(3,6)
+        range = math.norm(relPos);
+        if (monteCarloData !== null) {
+            if (n_target == monteCarloData.sat) {
+                let rData = monteCarloData.points.map(p => math.norm(math.subtract(Object.values(p).slice(0,3), math.squeeze(mainWindow.satellites[n_origin].getPositionArray()))))
+                let rDataAve = rData.reduce((a,b) => a + b, 0) / rData.length
+                rangeStd = (rData.reduce((a, b) => a + (b - rDataAve) ** 2, 0) / (rData.length-1)) ** 0.5
+            }
+        }
+        sunAngle = astro.sunEciFromTime(currentTime)//mainWindow.getCurrentSun()
+        sunAngle = math.acos(math.dot(relPos, sunAngle) / range / math.norm(sunAngle)) * 180 / Math.PI;
+        sunAngle = mainWindow.zeroCatsGood ? 180 - sunAngle : sunAngle;
+        moonAngle = astro.moonEciFromTime(currentTime)//mainWindow.getCurrentMoon()
+        moonAngle = math.acos(math.dot(relPos, moonAngle) / range / math.norm(moonAngle)) * 180 / Math.PI;
+        moonAngle = mainWindow.zeroCatsGood ? 180 - moonAngle : moonAngle; // Appropriate for USSF
+        rangeRate = math.dot(relVel, relPos) * 1000 / range;
+        // tanRate = Math.sqrt(Math.pow(math.norm(relVel), 2) - Math.pow(rangeRate, 2)) * 1000;
+
+        let ricState = Eci2Ric(pos1.slice(0,3), pos1.slice(3),pos2.slice(0,3), pos2.slice(3))
+        position = math.squeeze(ricState.rHcw)
+        velocity = math.squeeze(ricState.drHcw).map(s => s*1000)
+        ricVel = math.norm(velocity)
+        
+    }
+    catch (err) {
+        console.log(err)
+        return {
+            sunAngle: 0,
+            rangeRate: 0,
+            range: 0,
+            rangeStd: 0,
+            tanRate: 0,
+            relativeVelocity: 0,
+            position: [0,0,0],
+            velocity: [0,0,0],
+            ricVel: 0
+        }
+    }
+    return {
+        sunAngle,
+        moonAngle,
+        rangeRate,
+        range,
+        rangeStd,
+        tanRate,
+        position,
+        velocity,
+        ricVel,
+        relativeVelocity: math.norm(relVel)*1000
     }
 }
 
