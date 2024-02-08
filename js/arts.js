@@ -28,7 +28,6 @@ document.body.append(document.createElement("dialog"))
 function generateRandomString(length = 20) {
     let letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890!@#$%^&*()'
     let string = ''
-    console.log((1/letters.length)**length);
     for (let index = 0; index < length; index++) {
         string += letters[math.floor(math.random()*letters.length)]
         
@@ -75,6 +74,7 @@ class windowCanvas {
     stringLimit = [0,8];
     ephemViewerMode = false;
     hpop = false;
+    realTime = false;
     originSaves = {}
     error = { // at right after manuever while generating J2000 states, halves every hour
         neutral: {p: 25.6, v: 36.158, cp: 1.5, cv: 3.5}, // Full Error
@@ -1912,6 +1912,20 @@ class LaunchObject extends Satellite {
 
 }
 
+class Debris extends LaunchObject {
+    constructor(options = {}) {
+        super(options)
+        this.doesExist = (time = mainWindow.scenarioTime) => {
+            return time > this.appear
+        }
+        this.shape = 'square'
+        this.locked = true
+        this.name = ''
+        this.drawTrajectory = false
+        this.size /= 10
+    }
+}
+
 function testTimeDelta(dt = 500, time = 7200) {
     let dtState = [0, 0, 0, 0.015, 0, 0.055]
     let smallStepState = [...dtState]
@@ -1949,11 +1963,12 @@ let timeFunction = false;
         if (timeFunction) console.time()
         mainWindow.clear();
         mainWindow.updateSettings();
+        let currentZuluTime = new Date()
         if (math.abs(mainWindow.playTimeStep) > 0) updateContextMenu()
+        mainWindow.changeTime(mainWindow.realTime ? (new Date(currentZuluTime-(-currentZuluTime.getTimezoneOffset()*60000))-mainWindow.startDate) / 1000 : mainWindow.desired.scenarioTime + mainWindow.playTimeStep, true)
         if (mainWindow.polarPlotMode) {
             mainWindow.drawPolarPlot()
             mainWindow.showTime();
-            mainWindow.changeTime(mainWindow.desired.scenarioTime + mainWindow.playTimeStep, true)
             if (timeFunction) console.timeEnd()
             return window.requestAnimationFrame(animationLoop)
         }
@@ -1961,8 +1976,7 @@ let timeFunction = false;
             mainWindow.drawEarthFeatures()
 
             mainWindow.showTime();
-            mainWindow.changeTime(mainWindow.desired.scenarioTime + mainWindow.playTimeStep, true)
-        
+            
             mainWindow.showData();
             mainWindow.showLocation();
             mainWindow.satellites.forEach(sat => sat.drawCurrentPosition(true))
@@ -1979,7 +1993,6 @@ let timeFunction = false;
             mainWindow.showTime();
             mainWindow.showData();
             if (timeFunction) console.timeEnd()
-            mainWindow.changeTime(mainWindow.desired.scenarioTime + mainWindow.playTimeStep, true)
             return requestAnimationFrame(animationLoop)
         }
         mainWindow.drawInertialOrbit(); 
@@ -1997,7 +2010,7 @@ let timeFunction = false;
             mainWindow.calculateBurn();
         }
         mainWindow.satellites.forEach(sat => {
-            mainWindow.cnvs.getContext('2d').globalAlpha = sat.locked ? 0.15 : 1
+            mainWindow.cnvs.getContext('2d').globalAlpha = 1
             if (!sat.locked) {
                 sat.checkInBurn()
                 sat.drawTrajectory();
@@ -2013,7 +2026,6 @@ let timeFunction = false;
             console.log(`Autosaved on ${(new Date()).toString()}`)
             lastSaveTime = Date.now()
         }
-        mainWindow.changeTime(mainWindow.desired.scenarioTime + mainWindow.playTimeStep, true)
         return window.requestAnimationFrame(animationLoop)
     } catch (error) {
         console.log(mainWindow.satellites[0]?.burns[0]);
@@ -2770,6 +2782,7 @@ function updateContextMenu() {
     let ricMenu = document.querySelector('#context-ric-position')
     let groundMenu = document.querySelector('#context-ground-position')
     let activeSat = menu.sat
+    if (activeSat === undefined) return
     let ricPosition = mainWindow.satellites[activeSat].curPos
     let eciPosition = Object.values(getCurrentInertial(activeSat))
     let eciOriginPosition = Object.values(getCurrentInertialRic([0,0,0]))
@@ -2806,6 +2819,45 @@ function updateContextMenu() {
     angMenu.innerHTML = `&Delta; = ${arrowDisplay+angDiff.toFixed(2)}<sup>o</sup> <span style ="margin-left: 5px;">Drift = ${drift.toFixed(2)}<sup>o</sup>/rev</span> <span style ="margin-left: 5px;">&Delta;Plane = ${planeDiff.toFixed(2)}<sup>o</sup></span>`
     groundMenu.innerHTML = groundPosition
     ricMenu.innerHTML = `${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s`
+}
+
+function createDebris(sats = [0,1], velStd = 1, n = 100, color = '#aaa') {
+    console.log(sats);
+    if (sats.length === 1) {
+        for (let index = 0; index < n; index++) {
+            let state = Object.values(getCurrentInertial(sats[0]))
+            state[3] += velStd/1000*randn_bm()
+            state[4] += velStd/1000*randn_bm()
+            state[5] += velStd/1000*randn_bm()
+            mainWindow.satellites.push(new Debris({
+                position: astro.j20002Coe(state),
+                launchTime: mainWindow.scenarioTime,
+                color
+            }))
+        }
+        return
+    }
+
+
+
+    let aveRatio = mainWindow.satellites[sats[0]].mass/(mainWindow.satellites[sats[0]].mass+mainWindow.satellites[sats[1]].mass)
+    let ratioStd = aveRatio < 0.5 ? aveRatio/2 : (1-aveRatio)/2
+    for (let index = 0; index < n; index++) {
+        let ratio = aveRatio + ratioStd*randn_bm()
+        ratio = ratio < 0 ? 0.01 : ratio
+        ratio = ratio > 1 ? 0.99 : ratio
+        let masses = [ratio, 1-ratio]
+        let state = sats.map((s,ii) => math.dotMultiply(masses[ii],Object.values(getCurrentInertial(s)))).reduce((a,b) => math.add(a,b),[0,0,0,0,0,0])
+        state[3] += velStd/1000*randn_bm()
+        state[4] += velStd/1000*randn_bm()
+        state[5] += velStd/1000*randn_bm()
+        mainWindow.satellites.push(new Debris({
+            position: astro.j20002Coe(state),
+            launchTime: mainWindow.scenarioTime,
+            color
+        }))
+    }
+        
 }
 
 function startContextClick(event) {
@@ -3260,6 +3312,7 @@ function handleContextClick(button) {
             <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-covariance">${mainWindow.satellites[activeSat].cov === undefined ? 'Set' : 'Delete'} Covariance</div>
             <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-reachability">${mainWindow.satellites[activeSat].reach === undefined ? 'Display' : 'Delete'} Reachability</div>
             <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="set-conic-volume">Edit Conic Volumes</div>
+            <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="create-debris-field">Create Debris Field</div>
             <div class="context-item" onclick="generateStkEphemFile(${activeSat})" id="set-conic-volume">Export .e File</div>
             <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="copy-satellite">Copy Satellite</div>
         `
@@ -3267,7 +3320,35 @@ function handleContextClick(button) {
        let elHeight = cm.offsetHeight
        let elTop =  Number(cm.style.top.split('p')[0])
        cm.style.top = (window.innerHeight - elHeight) < elTop ? (window.innerHeight - elHeight) + 'px' : cm.style.top
-   }
+    }
+    if (button.id === 'create-debris-field') {
+        let sat = button.getAttribute('sat')
+        // button.parentElement.innerHTML = ''
+        button.parentElement.innerHTML = `
+            <div class="context-item" >Collision <select style="font-size: 1em; width: 50%;"><option value="-1">None</option>${mainWindow.satellites.map((satIn, satIi) => {
+                return satIi == sat ? '' : `<option value="${satIi}">${satIn.name}</option>`
+            }).join('')}</select></div>
+            <div class="context-item" >Velocity Spread <input type="Number" style="width: 5em; font-size: 1em" placeholder="1"> m/s</div>
+            <div class="context-item" >Objects Created <input type="Number" style="width: 5em; font-size: 1em" placeholder="10"></div>
+            <div class="context-item" >Color <input type="color" style="width: 5em; font-size: 1em" value="${mainWindow.satellites[sat].color}"></div>
+            <div class="context-item" sat=${sat} onclick="handleContextClick(this)" id="execute-debris-field">Create Debris</div>
+        `
+        let cm = document.getElementById('context-menu')
+        let elHeight = cm.offsetHeight
+        let elTop =  Number(cm.style.top.split('p')[0])
+        cm.style.top = (window.innerHeight - elHeight) < elTop ? (window.innerHeight - elHeight) + 'px' : cm.style.top
+    }
+    if (button.id === 'execute-debris-field') {
+        let sat = button.getAttribute('sat')
+        let inputs = [...button.parentElement.getElementsByTagName('input')].map(s => Number(s.value === '' ? s.placeholder: s.value));
+        let select = button.parentElement.querySelector('select').value
+        let satellites = [Number(sat)]
+        if (select !== "-1") {
+            satellites.push(Number(select))
+        }
+        createDebris(satellites, inputs[0], inputs[1])
+        document.getElementById('context-menu')?.remove();
+    }
     if (button.id === 'burn-select-options') {
         let sat = button.getAttribute('sat')
         let burn = button.getAttribute('burn')
@@ -3314,7 +3395,7 @@ function handleContextClick(button) {
             <div class="context-item" >RIC Vector <input type="Number" style="width: 5em; font-size: 1em" placeholder="-1"><input type="Number" style="width: 3em; font-size: 1em" placeholder="0"><input type="Number" style="width: 3em; font-size: 1em" placeholder="0"></div>
             <div class="context-item" >Half-Angle <input type="Number" style="width: 5em; font-size: 1em" placeholder="10"> deg</div>
             <div class="context-item" >Range <input type="Number" style="width: 5em; font-size: 1em" placeholder="10"> km</div>
-            <div class="context-item" >Color <input type="color" style="width: 5em; font-size: 1em" value="${mainWindow.satellites[sat].color}"> km</div>
+            <div class="context-item" >Color <input type="color" style="width: 5em; font-size: 1em" value="${mainWindow.satellites[sat].color}"></div>
             <div class="context-item" sat=${sat} onclick="handleContextClick(this)" id="save-conic-volume">Set</div>
         `
         let cm = document.getElementById('context-menu')
@@ -10229,6 +10310,7 @@ function openSatellitePanel(nLanes = mainWindow.nLane) {
                 return laneDiv + lane.map(sat => {
                     
                     let chosenSat = mainWindow.satellites[sat]
+                    if (chosenSat.appear !== undefined) return ''
                     return `
                         <div style="margin: 10px; font-size: 1.5em;">
                             <label style="font-size: 1.5em;" for="${chosenSat.name}-checkbox"/>${chosenSat.name}</label>
@@ -10244,10 +10326,35 @@ function openSatellitePanel(nLanes = mainWindow.nLane) {
             *Centering on an object will center on the objects <em>CURRENT</em> orbit, including any maneuver the object has undertaken
         </div>
         <div>
+            ${mainWindow.satellites.filter(sat => sat.appear !== undefined).length > 0 ? '<button onclick="deleteTempSatellites(this)" title="Delete all launch and debris objects" style="width: 100%; margin-top: 10px">Delete Temp Satellites</button>' : ''}
             <button onclick="closeQuickWindow()"style="width: 100%; margin-top: 10px">Close</button>
         </div>
     `
     openQuickWindow(inner, styleOptions = {width: '75%', maxHeight: '80vh'})
+}
+
+function deleteTempSatellites() {
+    let satIi = 0
+    while (satIi < mainWindow.satellites.length) {
+        if (mainWindow.satellites[satIi].appear === undefined) {
+            satIi++
+            continue
+        }
+        mainWindow.relativeData.dataReqs = mainWindow.relativeData.dataReqs.filter(s => s.target !== satIi && s.origin !== satIi)
+        for (let index = 0; index < mainWindow.relativeData.dataReqs.length; index++) {
+            let origin = mainWindow.relativeData.dataReqs[index].origin
+            origin = origin > satIi ? origin-1 : origin
+            let target = mainWindow.relativeData.dataReqs[index].target
+            target = target > satIi ? target-1 : target
+            mainWindow.relativeData.dataReqs[index].origin = origin
+            mainWindow.relativeData.dataReqs[index].target = target
+            
+        }
+        mainWindow.satellites.splice(satIi,1)
+
+    }
+    openSatellitePanel()
+    resetDataDivs()
 }
 
 function satAccessCheckChange(el) {
@@ -11604,6 +11711,12 @@ function clickPlayButton(el, step) {
     if (step !== undefined) {
         if (mainWindow.playTimeStep !== 0) {
             mainWindow.playTimeStep = Number(step)
+            if (Number(step) === -1) {
+                mainWindow.realTime = true
+            }
+            else {
+                mainWindow.realTime = false
+            }
         }
         let allLabels = [...el.parentElement.parentElement.querySelectorAll('label')].forEach(lab => {
             lab.style.fontWeight = ''
@@ -11614,19 +11727,27 @@ function clickPlayButton(el, step) {
         label.style.fontWeight = '900'
         return
     }
+    
     switch (el.getAttribute('mode')) {
         case 'play':
             el.setAttribute('mode', 'pause')
             let speed = el.parentElement.parentElement.querySelector('input:checked').getAttribute('speed');
             el.classList.remove('play')
             el.classList.add('pause')
-            mainWindow.playTimeStep = Number(speed)
+            if (Number(speed) === -1) {
+                mainWindow.realTime = true
+                mainWindow.playTimeStep = -1
+            }
+            else {
+                mainWindow.playTimeStep = Number(speed)
+            }
             break
         default:
             el.setAttribute('mode', 'play')
             el.classList.remove('pause')
             el.classList.add('play')
             mainWindow.playTimeStep = 0
+            mainWindow.realTime = false
             break
     }
 }
@@ -11650,12 +11771,21 @@ function openPlayButtonDiv(options = {}) {
     newDiv.style.borderRadius = '10px'
     newDiv.style.boxShadow = '5px 5px 7px #575757'
     newDiv.style.touchAction = 'none'
+    // Check if scenario includes current time, if so, allow for real time
+    let currentZuluTime = new Date()
+    currentZuluTime = new Date(currentZuluTime -(-60000*currentZuluTime.getTimezoneOffset()))
+
+    let isCurrentTimeWithinTimePeriod = currentZuluTime > mainWindow.startDate && currentZuluTime < (new Date(mainWindow.startDate - (-3600000*mainWindow.scenarioLength)))
     newDiv.innerHTML = `
     <div style="text-align: center">
         <div>
             <button mode="play" onclick="clickPlayButton(this)" class="playback play"></button>
         </div>
         <div style="display: flex; justify-content: space-around; margin: 15px 10px; flex-wrap: wrap;">
+            ${isCurrentTimeWithinTimePeriod ? `<div style="margin-right: 20px; minWidth: 50px;">
+                <input style="display: none;" oninput="clickPlayButton(this, -1)" id="play-real" name="play-speed" type="radio" speed="-1"/>
+                <label style="cursor: pointer;" for="play-real">Real</label>
+            </div>` : ''}
             <div style="margin-right: 20px; minWidth: 50px;">
                 <input style="display: none;" oninput="clickPlayButton(this, 0.0166667)" checked id="play-one" name="play-speed" type="radio" speed="0.01667"/>
                 <label style="cursor: pointer; text-decoration: underline; font-weight: 900;" for="play-one">1x</label>
