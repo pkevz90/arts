@@ -423,3 +423,10 @@ html, body {
       border-width: 0px 0 0px 60px;
     }
   }
+
+  #play-div {
+    opacity: 0.25;
+  }
+  #play-div:hover {
+    opacity: 1;
+  }

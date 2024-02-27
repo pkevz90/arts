@@ -20,7 +20,14 @@ let errorList = []
 let ellipses = []
 let circleTrig = math.range(0,360,12,false)._data.map(s => s*Math.PI/180).map(s => [Math.sin(s), Math.cos(s)])
 let monteCarloData = null
-
+let worldImage
+try {
+    worldImage = new Image()
+    worldImage.src = './Media/arts_world_light.jpg'
+     
+} catch (error) {
+    console.log(error);
+}
 let focLen = 1, azD = 45, elD = 45
 document.getElementById('time-slider-range').max = 48*3600
 document.body.append(document.createElement("dialog"))
@@ -381,6 +388,31 @@ class windowCanvas {
         let ctx = this.getContext()
         ctx.lineWidth = 1
         ctx.strokeStyle = 'rgb(150,150,150)'
+        // ctx.lineWidth = 1
+        // ctx.strokeStyle = this.colors.foregroundColor
+        // coastlines.forEach(array => {
+        //     let lastPoint = 0
+        //     ctx.beginPath()
+        //     array.forEach((point,ii) => {
+        //         // let pixelPoint = [
+        //         //     (point[0]+180)/360*this.cnvs.width,
+        //         //     (90-point[1])/180*this.cnvs.height
+        //         // ]
+        //         let pixelPoint = this.latLong2Pixel({
+        //             long: point[0], lat: point[1]
+        //         })
+        //         if (ii === 0) ctx.moveTo(pixelPoint[0], pixelPoint[1])
+        //         else if (math.abs(pixelPoint[0]-lastPoint) > this.cnvs.width/2) {
+        //             ctx.moveTo(pixelPoint[0], pixelPoint[1])
+        //         }
+        //         else ctx.lineTo(pixelPoint[0], pixelPoint[1])
+        //         lastPoint = pixelPoint[0]
+        //         // ctx.fillRect(pixelPoint[0]-3, pixelPoint[1]-3, 6,6)
+        //     })
+        //     ctx.stroke()
+        // })
+        // Draw longitudes
+        this.drawMap(ctx, this.cnvs)
         math.range(0,360,15)._data.forEach(long => {
             let pixelLong = this.latLong2Pixel({
                 long,
@@ -403,30 +435,6 @@ class windowCanvas {
             ctx.lineTo(this.cnvs.width, pixelLat[1])
             ctx.stroke()
         })
-        ctx.lineWidth = 1
-        ctx.strokeStyle = this.colors.foregroundColor
-        coastlines.forEach(array => {
-            let lastPoint = 0
-            ctx.beginPath()
-            array.forEach((point,ii) => {
-                // let pixelPoint = [
-                //     (point[0]+180)/360*this.cnvs.width,
-                //     (90-point[1])/180*this.cnvs.height
-                // ]
-                let pixelPoint = this.latLong2Pixel({
-                    long: point[0], lat: point[1]
-                })
-                if (ii === 0) ctx.moveTo(pixelPoint[0], pixelPoint[1])
-                else if (math.abs(pixelPoint[0]-lastPoint) > this.cnvs.width/2) {
-                    ctx.moveTo(pixelPoint[0], pixelPoint[1])
-                }
-                else ctx.lineTo(pixelPoint[0], pixelPoint[1])
-                lastPoint = pixelPoint[0]
-                // ctx.fillRect(pixelPoint[0]-3, pixelPoint[1]-3, 6,6)
-            })
-            ctx.stroke()
-        })
-        // Draw longitudes
         let screenWidth = 360 / this.groundTrackLimits.zoom
         let longitudeUnits = math.floor(screenWidth / 6 / 5)*5
         longitudeUnits = longitudeUnits === 0 ? math.floor(screenWidth / 6 ) : longitudeUnits
@@ -678,6 +686,44 @@ class windowCanvas {
         ctx.globalAlpha =  1
         // console.timeEnd()
 
+    }
+    drawMap(ctx,cnvs) {
+        let longCenter = mainWindow.groundTrackLimits.center
+        let latCenter = mainWindow.groundTrackLimits.latCenter
+        let zoom = mainWindow.groundTrackLimits.zoom
+        if (longCenter < 0) {
+            longCenter += 360
+        }
+        if (longCenter > 180 && (longCenter-180/zoom > 180)) {
+            longCenter -= 360
+        }
+        let longitudeHalfWidth = 0.5/zoom
+        let latitudeHalfHeight = 0.5/zoom
+        let longitudeCenter = (180+longCenter) / 360
+        let latitudeCenter = (90-latCenter)/180
+        ctx.drawImage(worldImage, 
+            worldImage.width*(longitudeCenter-longitudeHalfWidth), 
+            worldImage.height*(latitudeCenter-latitudeHalfHeight), 
+            worldImage.width*2*longitudeHalfWidth, 
+            worldImage.height*2*latitudeHalfHeight, 
+            0, 
+            0, 
+            cnvs.width, 
+            cnvs.height)
+            
+        if (longitudeCenter + longitudeHalfWidth > 1) {
+            let startCanvas = (1-longitudeCenter+longitudeHalfWidth) / 2/longitudeHalfWidth
+            
+            ctx.drawImage(worldImage, 
+                0, 
+                worldImage.height*(latitudeCenter-latitudeHalfHeight), 
+                worldImage.width*(2*longitudeHalfWidth), 
+                worldImage.height*2*latitudeHalfHeight, 
+                startCanvas *cnvs.width, 
+                0, 
+                cnvs.width, 
+                cnvs.height)
+        }
     }
     pixelToPolar(x,y, maxInc=90) {
         let smallestDimension = this.cnvs.width < this.cnvs.height ? this.cnvs.width : this.cnvs.height
@@ -2763,7 +2809,7 @@ function generateBurnContextMenu(satIndex = 0,burnIndex = 0, alt = false, shift 
 
 function updateContextMenu() {
     let menu = document.getElementById('context-menu')
-    if (menu === null) return
+    if (menu === null || mainWindow.latLongMode) return
 
     menu.style.left = '1px'
     let contextItems = [...menu.querySelectorAll('.context-item')].forEach(it => {
@@ -2816,8 +2862,10 @@ function updateContextMenu() {
     let eastWest = long > 180 ? 'W' : 'E'
     long = long > 180 ? -(long-360) : long
     groundPosition = `Lat: ${(lat).toFixed(2)}<sup>o</sup>, Long: ${(long).toFixed(2)+eastWest}<sup>o</sup>, <abbr title="Distance to Earth's Center">R</abbr>: ${math.norm(groundPosition.r_ecef).toFixed(1)} km`
+    if (angMenu === null) return // No ang menu 
     angMenu.innerHTML = `&Delta; = ${arrowDisplay+angDiff.toFixed(2)}<sup>o</sup> <span style ="margin-left: 5px;">Drift = ${drift.toFixed(2)}<sup>o</sup>/rev</span> <span style ="margin-left: 5px;">&Delta;Plane = ${planeDiff.toFixed(2)}<sup>o</sup></span>`
     groundMenu.innerHTML = groundPosition
+    if (ricMenu === null) return // No RIC menu if on ground track
     ricMenu.innerHTML = `${Object.values(ricPosition).slice(0,3).map(p => p.toFixed(2)).join(', ')} km  ${Object.values(ricPosition).slice(3,6).map(p => (1000*p).toFixed(2)).join(', ')} m/s`
 }
 
@@ -3141,7 +3189,7 @@ function startContextClick(event) {
             if (mainWindow.latLongMode) {
                 newInnerHTML += `
                     <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="zoom-to-sat">Zoom To</div>
-                    <div class="context-item" onclick="changeOrigin(${activeSat})" id="prop-options">Focus</div>
+                    <div class="context-item" sat="${activeSat}" onclick="handleContextClick(this)" id="ground-trace-button">${mainWindow.satellites[activeSat].showGroundTrack ? 'Hide' : 'Show'} Field of View</div>
                 `
             }
             else {
@@ -3329,10 +3377,10 @@ function handleContextClick(button) {
                 return satIi == sat ? '' : `<option value="${satIi}">${satIn.name}</option>`
             }).join('')}</select></div>
             <div class="context-item" >Velocity Spread <input type="Number" style="width: 5em; font-size: 1em" placeholder="1"> m/s</div>
-            <div class="context-item" >Objects Created <input type="Number" style="width: 5em; font-size: 1em" placeholder="10"></div>
-            <div class="context-item" >Color <input type="color" style="width: 5em; font-size: 1em" value="${mainWindow.satellites[sat].color}"></div>
+            <div class="context-item" >Objects Created <input type="Number" style="width: 5em; font-size: 1em" placeholder="20"></div>
             <div class="context-item" sat=${sat} onclick="handleContextClick(this)" id="execute-debris-field">Create Debris</div>
         `
+        //<div class="context-item" >Color <input type="color" style="width: 5em; font-size: 1em" value="${mainWindow.satellites[sat].color}"></div>
         let cm = document.getElementById('context-menu')
         let elHeight = cm.offsetHeight
         let elTop =  Number(cm.style.top.split('p')[0])
@@ -10994,7 +11042,6 @@ function openTleWindow(tleSatellites, tleNames = {}) {
         maxPoints = maxPoints.value === '' ? maxPoints.placeholder : maxPoints.value
         maxPoints = Number(maxPoints)
         maxPoints = maxPoints < 500 ? 500 : maxPoints
-        console.log(maxPoints);
         let origin = originRadio.findIndex(s => s)
         mainWindow.ephemViewerMode = true
         let satellites = []
@@ -11710,7 +11757,7 @@ function openDataDiv(options = {}) {
 function clickPlayButton(el, step) {
     if (step !== undefined) {
         if (mainWindow.playTimeStep !== 0) {
-            mainWindow.playTimeStep = Number(step)
+            mainWindow.playTimeStep = step === -2 ? 200 : Number(step)
             if (Number(step) === -1) {
                 mainWindow.realTime = true
             }
@@ -11822,6 +11869,7 @@ function openPlayButtonDiv(options = {}) {
     </div>
     `
     newDiv.classList.add('play-drag-div')
+    newDiv.id = 'play-div'
     let exitButton = document.createElement('div')
     exitButton.innerText = 'X'
     exitButton.style.position = 'absolute'
