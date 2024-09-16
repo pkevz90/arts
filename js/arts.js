@@ -23,7 +23,7 @@ let monteCarloData = null
 let worldImage
 try {
     worldImage = new Image()
-    worldImage.src = './Media/arts_world_light.jpg'
+    worldImage.src = './Media/arts_world.jpg'
      
 } catch (error) {
     console.log(error);
@@ -12608,11 +12608,11 @@ function createHpopStateHistory(startPosition = mainWindow.satellites[0].positio
                 })
                 burnDuration -= timeToNextTimeStep
                 while (burnDuration > tD) {
-                    // position = prop.propToTime(position, new Date(startDate - (-1000*tProp)), tD, {
-                    //     maxError: 1e-6,
-                    //     a: acc
-                    // }).state
-                    position = runge_kutta4(inertialEom, position, tD, acc)
+                    position = prop.propToTime(position, new Date(startDate - (-1000*tProp)), tD, {
+                        maxError: 1e-6,
+                        a: acc
+                    }).state
+                    // position = runge_kutta4(inertialEom, position, tD, acc)
                     tProp += tD
                     stateHistory.push({
                         t: tProp,
@@ -12635,12 +12635,12 @@ function createHpopStateHistory(startPosition = mainWindow.satellites[0].positio
                 })
             }
             else {
-                // position = prop.propToTime(position, new Date(startDate - (-1000*tProp)), burnDuration, {
-                //     maxError: 1e-6,
-                //     a: acc
-                // }).state
+                position = prop.propToTime(position, new Date(startDate - (-1000*tProp)), burnDuration, {
+                    maxError: 1e-6,
+                    a: acc
+                }).state
                 
-                position = runge_kutta4(inertialEom, position, burnDuration, acc)
+                // position = runge_kutta4(inertialEom, position, burnDuration, acc)
                 tProp += burnDuration
                 timeToNextTimeStep = tD - timeToBurn - burnDuration
                 position = prop.propToTime(position, new Date(startDate - (-1000*tProp)), timeToNextTimeStep, {
